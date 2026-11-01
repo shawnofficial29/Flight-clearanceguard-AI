@@ -58,12 +58,18 @@ def main() -> int:
     if FAILURES:
         return 1
 
-    if atc.climb_condition_fix != "MERIT":
-        fail(f"ATC condition fix is {atc.climb_condition_fix!r}; expected 'MERIT'.")
-    if pilot.climb_condition_fix is not None or pilot.climb_condition_type is not None:
+    atc_climbs = [a for a in atc.actions if a.action_type == "CLIMB"]
+    pilot_climbs = [a for a in pilot.actions if a.action_type == "CLIMB"]
+    if not atc_climbs or atc_climbs[0].trigger_type != "AFTER_WAYPOINT":
+        fail(f"ATC climb lacks the AFTER_WAYPOINT trigger: {atc.actions}.")
+    elif atc_climbs[0].trigger_value != "MERIT":
+        fail(f"ATC condition fix is {atc_climbs[0].trigger_value!r}; expected 'MERIT'.")
+    if not pilot_climbs:
+        fail("Pilot readback has no CLIMB action.")
+    elif pilot_climbs[0].trigger_type != "IMMEDIATE" or pilot_climbs[0].trigger_value is not None:
         fail(
-            "Pilot readback must leave the unstated condition null; got "
-            f"{pilot.climb_condition_type!r}/{pilot.climb_condition_fix!r}."
+            "Pilot readback must leave the unstated condition IMMEDIATE/null; got "
+            f"{pilot_climbs[0].trigger_type!r}/{pilot_climbs[0].trigger_value!r}."
         )
 
     program = fms.program_from_intent(pilot, source="pilot")

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .agents import atc_intent, explanation, pilot_intent
 from .config import Settings
-from .fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT
-from .models import BADGE_LABELS, CorrectionResult, DemoResult
-from .services import comparison, conflict, fms
+from .models import CorrectionResult, DemoResult
+from .scenarios import get_scenario, run_scenario
 from .services.model_client import JsonTransport
 
 CORRECTED_PILOT_TRANSCRIPT = (
@@ -23,51 +21,19 @@ def reset_session() -> dict[str, str]:
     return {"status": "reset"}
 
 
-def _badges(*provenances: tuple[str, str]) -> dict[str, str]:
-    return {step: BADGE_LABELS[prov] for step, prov in provenances}
-
-
 def run_demo(
     settings: Settings,
     transport: JsonTransport | None = None,
     *,
     use_live: bool = False,
+    scenario_id: str | None = None,
 ) -> DemoResult:
-    force_fixture = not use_live
-    atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, settings, transport, force_fixture=force_fixture)
-    pilot = pilot_intent.parse_pilot(
-        DEMO_PILOT_TRANSCRIPT, settings, transport, force_fixture=force_fixture
-    )
-    program = fms.program_from_intent(pilot, source="pilot")
-    matrix = comparison.build_matrix(atc, pilot, program)
-    prediction = conflict.predict(program)
-    narrative = explanation.explain(
-        matrix,
-        prediction,
-        settings,
-        transport,
-        atc_text=DEMO_ATC_TRANSCRIPT,
-        pilot_text=DEMO_PILOT_TRANSCRIPT,
-        force_fixture=force_fixture,
-    )
-    result = DemoResult(
-        atc_transcript=DEMO_ATC_TRANSCRIPT,
-        pilot_transcript=DEMO_PILOT_TRANSCRIPT,
-        atc_intent=atc,
-        pilot_intent=pilot,
-        fms=program,
-        comparison=matrix,
-        conflict=prediction,
-        explanation=narrative,
-        badges=_badges(
-            ("atc", atc.provenance),
-            ("pilot", pilot.provenance),
-            ("explanation", narrative.provenance),
-        ),
-    )
-    _SESSION["last_demo"] = result.model_dump()
+    scenario = get_scenario(scenario_id)
+    result = run_scenario(scenario, settings, transport, use_live=use_live)
+    _SESSION["last_demo"] = result.initial.model_dump()
     _SESSION["corrected"] = False
-    return result
+    _SESSION["scenario_id"] = scenario.id
+    return result.initial
 
 
 def run_correction(
@@ -75,34 +41,11 @@ def run_correction(
     transport: JsonTransport | None = None,
     *,
     use_live: bool = False,
+    scenario_id: str | None = None,
 ) -> CorrectionResult:
     """Simulated pilot action: reprogram the FMS from the ATC clearance."""
-    force_fixture = not use_live
-    atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, settings, transport, force_fixture=force_fixture)
-    pilot = pilot_intent.parse_pilot(
-        CORRECTED_PILOT_TRANSCRIPT, settings, transport, force_fixture=force_fixture
-    )
-    program = fms.program_corrected(atc)
-    matrix = comparison.build_matrix(atc, pilot, program)
-    prediction = conflict.predict(program)
-    narrative = explanation.explain(
-        matrix,
-        prediction,
-        settings,
-        transport,
-        atc_text=DEMO_ATC_TRANSCRIPT,
-        pilot_text=CORRECTED_PILOT_TRANSCRIPT,
-        force_fixture=force_fixture,
-    )
-    resolved = not prediction.conflict
-    result = CorrectionResult(
-        fms=program,
-        comparison=matrix,
-        conflict=prediction,
-        explanation=narrative,
-        resolved=resolved,
-        badges=_badges(("correction", program.provenance), ("explanation", narrative.provenance)),
-    )
-    _SESSION["last_correction"] = result.model_dump()
+    scenario = get_scenario(scenario_id or _SESSION.get("scenario_id"))
+    result = run_scenario(scenario, settings, transport, use_live=use_live)
+    _SESSION["last_correction"] = result.corrected.model_dump()
     _SESSION["corrected"] = True
-    return result
+    return result.corrected

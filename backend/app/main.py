@@ -9,6 +9,7 @@ from .agents import atc_intent, explanation, pilot_intent
 from .config import live_model_available, live_voice_available, load_settings
 from .demo import reset_session, run_correction, run_demo
 from .models import (
+    Clearance,
     CompareRequest,
     ComparisonMatrix,
     ConflictPrediction,
@@ -21,13 +22,13 @@ from .models import (
     FMSProgram,
     FMSRequest,
     ParseRequest,
-    StructuredIntent,
     VoiceTranscript,
 )
+from .scenarios import SCENARIOS, get_scenario
 from .services import comparison, conflict, fms, voice
 from .services.voice import VoiceAPIError
 
-app = FastAPI(title="ClearanceGuard AI", version="0.1.0-day1")
+app = FastAPI(title="ClearanceGuard AI", version="0.2.0-depth")
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,13 +50,22 @@ def health() -> dict[str, object]:
     }
 
 
-@app.post("/api/atc/parse", response_model=StructuredIntent)
-def parse_atc(request: ParseRequest) -> StructuredIntent:
+@app.get("/api/scenarios")
+def list_scenarios() -> dict[str, object]:
+    return {
+        "scenarios": [
+            {"id": scenario.id, "title": scenario.title} for scenario in SCENARIOS.values()
+        ]
+    }
+
+
+@app.post("/api/atc/parse", response_model=Clearance)
+def parse_atc(request: ParseRequest) -> Clearance:
     return atc_intent.parse_atc(request.transcript, load_settings(), force_fixture=not request.use_live)
 
 
-@app.post("/api/pilot/parse", response_model=StructuredIntent)
-def parse_pilot(request: ParseRequest) -> StructuredIntent:
+@app.post("/api/pilot/parse", response_model=Clearance)
+def parse_pilot(request: ParseRequest) -> Clearance:
     return pilot_intent.parse_pilot(
         request.transcript, load_settings(), force_fixture=not request.use_live
     )
@@ -90,7 +100,8 @@ def compare(request: CompareRequest) -> ComparisonMatrix:
 
 @app.post("/api/conflict/predict", response_model=ConflictPrediction)
 def predict_conflict(request: ConflictRequest) -> ConflictPrediction:
-    return conflict.predict(request.fms)
+    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else None
+    return conflict.predict(request.fms, geometry)
 
 
 @app.post("/api/explain", response_model=Explanation)
@@ -107,12 +118,12 @@ def explain(request: ExplainRequest) -> Explanation:
 
 @app.post("/api/demo/run", response_model=DemoResult)
 def demo_run(request: DemoRequest) -> DemoResult:
-    return run_demo(load_settings(), use_live=request.use_live)
+    return run_demo(load_settings(), use_live=request.use_live, scenario_id=request.scenario_id)
 
 
 @app.post("/api/demo/correct", response_model=CorrectionResult)
 def demo_correct(request: DemoRequest) -> CorrectionResult:
-    return run_correction(load_settings(), use_live=request.use_live)
+    return run_correction(load_settings(), use_live=request.use_live, scenario_id=request.scenario_id)
 
 
 @app.post("/api/session/reset")

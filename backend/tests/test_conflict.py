@@ -3,6 +3,7 @@
 from app.agents import atc_intent, pilot_intent
 from app.config import Settings
 from app.fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT
+from app.scenarios import DESCENT_GEOMETRY
 from app.services import conflict, fms
 
 
@@ -30,6 +31,21 @@ def test_constrained_climb_has_no_conflict(offline_settings: Settings):
     assert prediction.conflict is False
     assert prediction.first_conflict_time_s is None
     assert prediction.conflict_point_nm is None
+
+
+def test_low_descent_conflicts_while_correct_level_clears(offline_settings: Settings):
+    low = pilot_intent.parse_pilot(
+        "META 452, descend to 10,000 feet.", offline_settings, force_fixture=True
+    )
+    low_prediction = conflict.predict(fms.program_from_intent(low), DESCENT_GEOMETRY)
+    assert low_prediction.conflict is True
+    assert low_prediction.vertical_ft_at_conflict == 0.0
+
+    correct = pilot_intent.parse_pilot(
+        "META 452, descend to 11,000 feet.", offline_settings, force_fixture=True
+    )
+    correct_prediction = conflict.predict(fms.program_from_intent(correct), DESCENT_GEOMETRY)
+    assert correct_prediction.conflict is False
 
 
 def test_prediction_is_deterministic(offline_settings: Settings):

@@ -33,7 +33,14 @@ class VoiceNotConfiguredError(Exception):
 
 
 class VoiceAPIError(Exception):
-    pass
+    """Sanitized by construction: status and body only, never the API key."""
+
+    def __init__(
+        self, message: str, *, status_code: int | None = None, body: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.body = body
 
 
 VOICE_FIXTURES: dict[str, str] = {
@@ -98,8 +105,12 @@ def httpx_post_audio(
     except httpx.RequestError as exc:
         raise VoiceAPIError(f"Muse Voice request failed: {exc}.") from exc
     if response.status_code >= 400:
-        snippet = response.text[:300].replace("\n", " ")
-        raise VoiceAPIError(f"Muse Voice HTTP {response.status_code}: {snippet}")
+        snippet = response.text[:2000]
+        raise VoiceAPIError(
+            f"Muse Voice HTTP {response.status_code}: {snippet}",
+            status_code=response.status_code,
+            body=snippet,
+        )
     try:
         decoded = response.json()
     except ValueError as exc:
@@ -124,9 +135,30 @@ def transcribe_wav(
     transport: VoiceTransport | None = None,
     *,
     force_fixture: bool = False,
+    strict_live: bool = False,
 ) -> VoiceTranscript:
     validate_wav(filename, audio)
     base = Path(filename).name.lower()
+    if strict_live:
+        if not live_voice_available(settings):
+            raise VoiceNotConfiguredError("MODEL_API_KEY is not set.")
+        assert settings.meta_voice_api_url
+        assert settings.meta_api_key
+        sender = transport or httpx_post_audio
+        raw = sender(
+            settings.meta_voice_api_url,
+            {"Authorization": f"Bearer {settings.meta_api_key}"},
+            Path(filename).name,
+            audio,
+            settings.meta_voice_model,
+            settings.request_timeout_s,
+        )
+        return VoiceTranscript(
+            transcript=_extract_transcript(raw),
+            provenance="live_muse_voice",
+            model=settings.meta_voice_model,
+            source_file=Path(filename).name,
+        )
     if not force_fixture and live_voice_available(settings):
         assert settings.meta_voice_api_url
         assert settings.meta_api_key

@@ -4,8 +4,8 @@ Shared 4D ATC clearance verification prototype. Compares ATC intent, pilot
 readback, simulated FMS programming, and predicted trajectory — and explains
 any mismatch in plain language.
 
-Status: **Day 1 backend complete** (API + agents + deterministic core + tests).
-Frontend follows on Day 2.
+Status: **Backend Depth Phase complete** (generalized schema, scenarios,
+eval harness, voice smoke). Frontend follows next.
 
 ## Architecture
 
@@ -26,6 +26,11 @@ Pilot readback ─► Pilot Agent ──► FMS simulator ──► Deterministi
   predicts. Nothing edits or controls the aircraft.
 - State is in-memory only; every result carries a provenance badge: Live Meta
   API, Live Muse Voice, or Fixture fallback.
+- Clearances use a fixed, non-recursive `ClearanceAction` list (DIRECT_TO,
+  CLIMB, DESCEND, MAINTAIN, SPEED, HEADING, HOLD) with triggers
+  (IMMEDIATE, AFTER_WAYPOINT, AT_WAYPOINT, AT_TIME). Comparison emits
+  categorized findings across nine categories; any required field below
+  0.85 confidence forces VERIFY_REQUIRED.
 
 ## Setup
 
@@ -65,6 +70,11 @@ Health: `GET http://127.0.0.1:8000/health`
 Demo clearance: `META 452, after passing MERIT, climb to flight level 230 and
 proceed direct PONCT.` Pilot readback omits `after passing MERIT`.
 
+Three registry scenarios (`GET /api/scenarios`, `scenario_id` on demo and
+conflict calls): `early-climb` (missing condition, conflict), `altitude-value`
+(11,000 vs 10,000 ft, conflict), `wrong-direct` (wrong fix, no conflict).
+Each runs parse → FMS → compare → predict → correct → resolve.
+
 ## Meta model usage
 
 - `muse-spark-1.3`: ATC Intent Agent, Pilot Understanding Agent, Verification
@@ -99,12 +109,19 @@ Covers parsing fallback, strict validation, FMS behavior, comparison, conflict
 prediction, voice fallback, demo end to end, and HTTP routes. All tests run
 offline with fixed fixtures and stubbed transports.
 
-Live smoke test (needs `MODEL_API_KEY` in `.env`; fails loudly on any
+Live smoke tests (need `MODEL_API_KEY` in `.env`; fail loudly on any
 fixture fallback instead of passing silently):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python backend\scripts\live_smoke.py
+.\.venv\Scripts\python backend\scripts\voice_smoke.py <path-to-24khz-mono-wav>
+```
+
+Offline evaluation (30 fixed pairs plus 3 scenarios; reproducible):
+
+```powershell
+.\.venv\Scripts\python backend\scripts\run_eval.py
 ```
 
 ## Public-deployment preparation

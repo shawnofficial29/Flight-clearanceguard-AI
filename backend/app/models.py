@@ -1,4 +1,4 @@
-"""Pydantic data models: strict agent outputs, FMS, comparison, conflict."""
+"""Pydantic data models: generalized clearance schema, FMS, comparison, conflict."""
 
 from __future__ import annotations
 
@@ -14,32 +14,62 @@ BADGE_LABELS: dict[str, str] = {
     "fixture_fallback": "Fixture fallback",
 }
 
-AFTER_PASSING = "after_passing"
+ActionType = Literal["DIRECT_TO", "CLIMB", "DESCEND", "MAINTAIN", "SPEED", "HEADING", "HOLD"]
+Unit = Literal["FL", "FT", "KTS", "DEG", "NONE"]
+TriggerType = Literal["IMMEDIATE", "AFTER_WAYPOINT", "AT_WAYPOINT", "AT_TIME"]
+FindingCategory = Literal[
+    "CALLSIGN_MISMATCH",
+    "MISSING_ACTION",
+    "EXTRA_ACTION",
+    "CHANGED_VALUE",
+    "CHANGED_WAYPOINT",
+    "MISSING_CONDITION",
+    "CHANGED_CONDITION",
+    "INCORRECT_EXECUTION_TIME",
+    "PARTIAL_FMS_LOAD",
+]
+FindingScope = Literal["atc_vs_pilot", "pilot_vs_fms"]
+OverallStatus = Literal["agree", "mismatch", "verify_required"]
+RowStatus = Literal["match", "mismatch", "info"]
+
+CONFIDENCE_GATE = 0.85
+
+
+class ClearanceAction(BaseModel):
+    """One ordered clearance action. Flat and non-recursive by design."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action_type: ActionType
+    target_fix: str | None = Field(description="Fix for DIRECT_TO/HOLD, else null.")
+    numeric_value: int | None = Field(description="Level/speed/heading number, else null.")
+    unit: Unit = Field(description="FL, FT, KTS, DEG, or NONE.")
+    trigger_type: TriggerType = Field(description="IMMEDIATE unless a condition is stated.")
+    trigger_value: str | None = Field(description="Fix for waypoint triggers, HH:MM for AT_TIME.")
+    evidence: str | None = Field(description="Exact transcript span, or null.")
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ClearancePayload(BaseModel):
     """Exact strict-JSON contract for the language models.
 
     Every key is required; unknown or unstated values must be explicit null.
-    The model must never infer a missing value.
+    Actions stay in transcript order. The model must never infer an absent
+    action, value, fix, or condition.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     callsign: str | None = Field(description="Aircraft callsign exactly as stated, else null.")
-    climb_to_fl: int | None = Field(description="Cleared flight level as integer, e.g. 230, else null.")
-    climb_condition_type: Literal["after_passing"] | None = Field(
-        description="'after_passing' only if a passing condition is stated, else null."
+    callsign_evidence: str | None = Field(description="Exact callsign span, or null.")
+    callsign_confidence: float = Field(ge=0.0, le=1.0)
+    actions: list[ClearanceAction] = Field(description="Ordered actions, possibly empty.")
+    overall_confidence: float = Field(
+        ge=0.0, le=1.0, description="Minimum over callsign and action confidences."
     )
-    climb_condition_fix: str | None = Field(description="Condition fix such as MERIT, else null.")
-    direct_to: str | None = Field(description="Direct-to fix such as PONCT, else null.")
-    evidence: dict[str, str | None] = Field(
-        description="Quoted transcript span supporting each field, or null."
-    )
-    confidence: float = Field(ge=0.0, le=1.0, description="Overall parse confidence 0..1.")
 
 
-class StructuredIntent(ClearancePayload):
+class Clearance(ClearancePayload):
     """A clearance payload plus source text and provenance for display."""
 
     raw_text: str
@@ -56,12 +86,24 @@ class FMSProgram(BaseModel):
 
     callsign: str | None
     cleared_fl: int | None
+    cleared_alt_ft: int | None
     climb_start_fix: str | None
     lateral_direct_to: str | None
     route: list[str]
+    loaded: list[str]
+    held: list[str]
     source: Literal["atc", "pilot", "corrected"]
     provenance: Provenance
     summary: str
+
+
+class Finding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: FindingCategory
+    scope: FindingScope
+    action: str
+    detail: str
 
 
 class MatrixRow(BaseModel):
@@ -72,7 +114,8 @@ class MatrixRow(BaseModel):
     pilot: str
     fms: str
     predicted: str
-    status: Literal["match", "mismatch", "info"]
+    status: RowStatus
+    category: str
     note: str
 
 
@@ -80,9 +123,31 @@ class ComparisonMatrix(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rows: list[MatrixRow]
-    overall: Literal["agree", "mismatch"]
+    findings: list[Finding]
+    overall: OverallStatus
+    min_confidence: float
     missing_condition: bool
     missing_phrase: str | None
+
+
+class ScenarioGeometry(BaseModel):
+    """Flat-plane demo airspace. Prototype simplification, documented."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    own_start_nm: tuple[float, float] = (0.0, 0.0)
+    own_speed_kt: float = 300.0
+    own_init_alt_ft: float = 15000.0
+    climb_rate_fpm: float = 2000.0
+    descend_rate_fpm: float = 1500.0
+    merit_nm: tuple[float, float] = (20.0, 0.0)
+    intruder_start_nm: tuple[float, float] = (18.0, -18.0)
+    intruder_vel_kt: tuple[float, float] = (0.0, 300.0)
+    intruder_alt_ft: float = 23000.0
+    lateral_threshold_nm: float = 5.0
+    vertical_threshold_ft: float = 1000.0
+    horizon_s: float = 720.0
+    step_s: float = 5.0
 
 
 class ProfilePoint(BaseModel):
@@ -138,8 +203,8 @@ class DemoResult(BaseModel):
 
     atc_transcript: str
     pilot_transcript: str
-    atc_intent: StructuredIntent
-    pilot_intent: StructuredIntent
+    atc: Clearance
+    pilot: Clearance
     fms: FMSProgram
     comparison: ComparisonMatrix
     conflict: ConflictPrediction
@@ -158,6 +223,15 @@ class CorrectionResult(BaseModel):
     badges: dict[str, str]
 
 
+class ScenarioResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_id: str
+    initial: DemoResult
+    corrected: CorrectionResult
+    resolved: bool
+
+
 class ParseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -168,15 +242,15 @@ class ParseRequest(BaseModel):
 class FMSRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    intent: StructuredIntent
+    intent: Clearance
     source: Literal["atc", "pilot"] = "pilot"
 
 
 class CompareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    atc: StructuredIntent
-    pilot: StructuredIntent
+    atc: Clearance
+    pilot: Clearance
     fms: FMSProgram
 
 
@@ -184,6 +258,7 @@ class ConflictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     fms: FMSProgram
+    scenario_id: str | None = None
 
 
 class ExplainRequest(BaseModel):
@@ -200,3 +275,4 @@ class DemoRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     use_live: bool = False
+    scenario_id: str | None = None

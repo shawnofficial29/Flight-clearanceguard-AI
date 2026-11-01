@@ -16,7 +16,7 @@ def test_demo_run_detects_mismatch_and_conflict(offline_settings: Settings):
     assert set(result.badges.values()) == {"Fixture fallback"}
     # The pilot program climbs early while ATC required waiting for MERIT.
     assert result.fms.climb_start_fix is None
-    assert result.atc_intent.climb_condition_fix == "MERIT"
+    assert result.atc.actions[0].trigger_value == "MERIT"
 
 
 def test_demo_correction_removes_conflict(offline_settings: Settings):

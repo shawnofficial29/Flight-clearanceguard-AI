@@ -32,9 +32,16 @@ def test_health():
 
 def test_parse_routes():
     atc = client.post("/api/atc/parse", json={"transcript": DEMO_ATC_TRANSCRIPT}).json()
-    assert atc["climb_condition_fix"] == "MERIT"
+    assert atc["actions"][0]["trigger_value"] == "MERIT"
     pilot = client.post("/api/pilot/parse", json={"transcript": DEMO_PILOT_TRANSCRIPT}).json()
-    assert pilot["climb_condition_fix"] is None
+    climb = next(a for a in pilot["actions"] if a["action_type"] == "CLIMB")
+    assert climb["trigger_type"] == "IMMEDIATE"
+    assert climb["trigger_value"] is None
+
+
+def test_scenarios_endpoint():
+    body = client.get("/api/scenarios").json()
+    assert {s["id"] for s in body["scenarios"]} == {"early-climb", "altitude-value", "wrong-direct"}
 
 
 def test_voice_transcribe_fixture_file():

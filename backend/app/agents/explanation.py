@@ -39,14 +39,22 @@ def _fallback(comparison: ComparisonMatrix, conflict: ConflictPrediction) -> Exp
             evidence=["Integrity matrix shows match on every aspect."],
             recommended_action="No action required.",
         )
+    if comparison.overall == "verify_required":
+        return ExplanationPayload(
+            summary="Verification required: a clearance field is below the confidence gate.",
+            cause="One or more required fields parsed below 0.85 confidence.",
+            evidence=[f.detail for f in comparison.findings] or ["Low-confidence parse."],
+            recommended_action="Pilot confirms each clearance value by voice before FMS entry.",
+        )
+    categories = sorted({f.category for f in comparison.findings})
     mismatches = [r for r in comparison.rows if r.status == "mismatch"]
-    aspects = ", ".join(r.aspect for r in mismatches) or "clearance condition"
-    summary = f"Mismatch on {aspects}: pilot readback omits the ATC climb condition."
+    aspects = ", ".join(r.aspect for r in mismatches) or "clearance"
+    summary = f"Mismatch on {aspects} ({', '.join(categories) or 'unclassified'})."
     cause = (
-        "The FMS was programmed from the pilot's incomplete readback, so it commands "
-        "an immediate climb instead of waiting until after MERIT."
+        "; ".join(f.detail for f in comparison.findings[:2])
+        or "The pilot readback diverges from the ATC clearance."
     )
-    evidence = [f"{r.aspect}: ATC '{r.atc}' vs pilot '{r.pilot}' vs FMS '{r.fms}'." for r in mismatches]
+    evidence = [f.detail for f in comparison.findings]
     if conflict.conflict and conflict.first_conflict_time_s is not None:
         t = conflict.first_conflict_time_s
         evidence.append(
@@ -57,10 +65,9 @@ def _fallback(comparison: ComparisonMatrix, conflict: ConflictPrediction) -> Exp
     return ExplanationPayload(
         summary=summary,
         cause=cause,
-        evidence=evidence,
+        evidence=evidence or ["See integrity matrix rows."],
         recommended_action=(
-            "Pilot confirms corrected FMS entry: climb to FL230 only after passing "
-            "MERIT, then direct PONCT."
+            "Pilot confirms corrected FMS entry matching the ATC clearance."
         ),
     )
 

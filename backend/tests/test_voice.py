@@ -7,7 +7,12 @@ import pytest
 
 from app.config import Settings
 from app.fixtures import DEMO_PILOT_TRANSCRIPT
-from app.services.voice import VoiceAPIError, request_payload, transcribe_wav
+from app.services.voice import (
+    VoiceAPIError,
+    VoiceNotConfiguredError,
+    request_payload,
+    transcribe_wav,
+)
 
 
 def make_wav(*, channels: int = 1, sampwidth: int = 2, rate: int = 24000) -> bytes:
@@ -82,3 +87,24 @@ def test_16khz_accepted(offline_settings: Settings):
         "meta452_readback.wav", make_wav(rate=16000), offline_settings, force_fixture=True
     )
     assert result.provenance == "fixture_fallback"
+
+
+def test_strict_live_unconfigured_raises(offline_settings: Settings):
+    with pytest.raises(VoiceNotConfiguredError):
+        transcribe_wav("cockpit.wav", make_wav(), offline_settings, strict_live=True)
+
+
+def test_strict_live_stub_returns_live(live_settings: Settings):
+    def _send(url, headers, filename, audio, model, timeout):
+        return {"transcript": DEMO_PILOT_TRANSCRIPT}
+
+    result = transcribe_wav("cockpit.wav", make_wav(), live_settings, _send, strict_live=True)
+    assert result.provenance == "live_muse_voice"
+
+
+def test_strict_live_error_propagates(live_settings: Settings):
+    def _boom(url, headers, filename, audio, model, timeout):
+        raise VoiceAPIError("stub outage", status_code=500, body="err")
+
+    with pytest.raises(VoiceAPIError):
+        transcribe_wav("cockpit.wav", make_wav(), live_settings, _boom, strict_live=True)
