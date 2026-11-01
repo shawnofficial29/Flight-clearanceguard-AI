@@ -200,29 +200,38 @@ def _collect_actions(text: str) -> tuple[list[tuple[int, ClearanceAction]], list
     return found, hold_spans
 
 
-def _collect_triggers(text: str, hold_spans: list[tuple[int, int]]) -> list[tuple[int, TriggerType, str]]:
-    triggers: list[tuple[int, TriggerType, str]] = []
+def _collect_triggers(
+    text: str, hold_spans: list[tuple[int, int]]
+) -> list[tuple[int, TriggerType, str, str]]:
+    triggers: list[tuple[int, TriggerType, str, str]] = []
     after_spans: list[tuple[int, int]] = []
     for match in _AFTER.finditer(text):
         after_spans.append(match.span())
-        triggers.append((match.start(), "AFTER_WAYPOINT", match.group(1).upper()))
+        triggers.append((match.start(), "AFTER_WAYPOINT", match.group(1).upper(), match.group(0)))
     for match in _AT_TIME.finditer(text):
-        triggers.append((match.start(), "AT_TIME", match.group(1)))
+        triggers.append((match.start(), "AT_TIME", match.group(1), match.group(0)))
     scrubbed = _blank_spans(text, hold_spans + after_spans)
     for match in _AT_FIX.finditer(scrubbed):
-        triggers.append((match.start(), "AT_WAYPOINT", match.group(1).upper()))
+        triggers.append((match.start(), "AT_WAYPOINT", match.group(1).upper(), match.group(0)))
     return triggers
 
 
 def _attach_triggers(
-    actions: list[tuple[int, ClearanceAction]], triggers: list[tuple[int, TriggerType, str]]
+    actions: list[tuple[int, ClearanceAction]], triggers: list[tuple[int, TriggerType, str, str]]
 ) -> None:
-    for tpos, ttype, tvalue in triggers:
+    for tpos, ttype, tvalue, span in triggers:
         if not actions:
             return
         best = min(actions, key=lambda item: (abs(item[0] - tpos), item[0] > tpos))
         best[1].trigger_type = ttype
         best[1].trigger_value = tvalue
+        if best[1].evidence:
+            if tpos < best[0]:
+                best[1].evidence = f"{span}, {best[1].evidence}"
+            else:
+                best[1].evidence = f"{best[1].evidence}, {span}"
+        else:
+            best[1].evidence = span
 
 
 def parse_transcript(

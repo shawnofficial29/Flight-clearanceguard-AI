@@ -5,27 +5,40 @@ from __future__ import annotations
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from .agents import atc_intent, explanation, pilot_intent
+from .agents import atc_intent, coordinator, explanation, pilot_intent
 from .config import live_model_available, live_voice_available, load_settings
 from .demo import reset_session, run_correction, run_demo
 from .models import (
+    AuditEvent,
+    AuditVerify,
     Clearance,
     CompareRequest,
     ComparisonMatrix,
     ConflictPrediction,
     ConflictRequest,
+    CoordinateRequest,
+    CoordinationResult,
     CorrectionResult,
     DemoRequest,
     DemoResult,
+    EnumerateRequest,
     ExplainRequest,
     Explanation,
+    FingerprintRequest,
+    Fingerprints,
     FMSProgram,
     FMSRequest,
     ParseRequest,
+    ResolutionCandidate,
+    SafetyWindow,
+    SafetyWindowRequest,
+    VerificationResult,
+    VerifyRequest,
     VoiceTranscript,
 )
 from .scenarios import SCENARIOS, get_scenario
-from .services import comparison, conflict, fms, voice
+from .services import audit, comparison, conflict, fingerprints, fms, resolutions, safety, voice
+from .services.conflict import DEFAULT_GEOMETRY
 from .services.voice import VoiceAPIError
 
 app = FastAPI(title="ClearanceGuard AI", version="0.2.0-depth")
@@ -129,3 +142,47 @@ def demo_correct(request: DemoRequest) -> CorrectionResult:
 @app.post("/api/session/reset")
 def session_reset() -> dict[str, str]:
     return reset_session()
+
+
+@app.post("/api/safety/window", response_model=SafetyWindow)
+def safety_window(request: SafetyWindowRequest) -> SafetyWindow:
+    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else DEFAULT_GEOMETRY
+    matrix = comparison.build_matrix(request.atc, request.pilot, request.fms)
+    return safety.calculate(request.atc, request.fms, matrix.findings, geometry)
+
+
+@app.post("/api/resolutions/enumerate", response_model=list[ResolutionCandidate])
+def enumerate_resolutions(request: EnumerateRequest) -> list[ResolutionCandidate]:
+    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else DEFAULT_GEOMETRY
+    matrix = comparison.build_matrix(request.atc, request.pilot, request.fms)
+    return resolutions.enumerate_candidates(request.atc, request.pilot, matrix, geometry)
+
+
+@app.post("/api/resolutions/verify", response_model=VerificationResult)
+def verify_resolution(request: VerifyRequest) -> VerificationResult:
+    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else DEFAULT_GEOMETRY
+    matrix = comparison.build_matrix(request.atc, request.pilot, request.fms)
+    return resolutions.verify_candidate(request.candidate_id, request.atc, request.pilot, matrix, geometry)
+
+
+@app.post("/api/fingerprints", response_model=Fingerprints)
+def intent_fingerprints(request: FingerprintRequest) -> Fingerprints:
+    return fingerprints.fingerprints(request.atc, request.pilot, request.fms)
+
+
+@app.get("/api/audit/events", response_model=list[AuditEvent])
+def audit_events() -> list[AuditEvent]:
+    return audit.events()
+
+
+@app.get("/api/audit/verify", response_model=AuditVerify)
+def audit_verify() -> AuditVerify:
+    return audit.verify()
+
+
+@app.post("/api/coordinate", response_model=CoordinationResult)
+def coordinate_resolution(request: CoordinateRequest) -> CoordinationResult:
+    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else DEFAULT_GEOMETRY
+    return coordinator.coordinate(
+        request.atc_text, request.pilot_text, load_settings(), geometry, use_live=request.use_live
+    )

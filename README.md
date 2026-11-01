@@ -4,8 +4,9 @@ Shared 4D ATC clearance verification prototype. Compares ATC intent, pilot
 readback, simulated FMS programming, and predicted trajectory — and explains
 any mismatch in plain language.
 
-Status: **Backend Depth Phase complete** (generalized schema, scenarios,
-eval harness, voice smoke). Frontend follows next.
+Status: **Safety Window and Verified Resolution complete** (counterfactual
+simulation, verified candidates, coordinator agent, fingerprints, audit
+chain). Frontend follows next.
 
 ## Architecture
 
@@ -75,6 +76,14 @@ conflict calls): `early-climb` (missing condition, conflict), `altitude-value`
 (11,000 vs 10,000 ft, conflict), `wrong-direct` (wrong fix, no conflict).
 Each runs parse → FMS → compare → predict → correct → resolve.
 
+Differentiation services (all deterministic except the coordinator's
+explanations): counterfactual Safety Window (`POST /api/safety/window`),
+verified resolution candidates (`POST /api/resolutions/enumerate` and
+`/verify`), SHA-256 intent fingerprints (`POST /api/fingerprints`), a
+hash-linked audit chain (`GET /api/audit/events`, `/verify`), and the
+Resolution Coordinator Agent (`POST /api/coordinate`) using native Chat
+Completions tool calling (6 tools, 6-turn cap, submit-only-verified).
+
 ## Meta model usage
 
 - `muse-spark-1.3`: ATC Intent Agent, Pilot Understanding Agent, Verification
@@ -116,6 +125,7 @@ fixture fallback instead of passing silently):
 .\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python backend\scripts\live_smoke.py
 .\.venv\Scripts\python backend\scripts\voice_smoke.py <path-to-24khz-mono-wav>
+.\.venv\Scripts\python backend\scripts\coordinator_smoke.py
 ```
 
 Offline evaluation (30 fixed pairs plus 3 scenarios; reproducible):

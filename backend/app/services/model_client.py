@@ -104,6 +104,53 @@ def extract_json_payload(body: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+class ToolCall:
+    """One native assistant tool call with parsed arguments."""
+
+    def __init__(self, call_id: str, name: str, arguments: dict[str, Any]) -> None:
+        self.id = call_id
+        self.name = name
+        self.arguments = arguments
+
+
+class AssistantMessage:
+    """Assistant reply: optional content, native tool calls, raw round-trip dict."""
+
+    def __init__(self, content: str | None, tool_calls: list[ToolCall], raw: dict[str, Any]) -> None:
+        self.content = content
+        self.tool_calls = tool_calls
+        self.raw = raw
+
+
+def parse_assistant_message(message: dict[str, Any]) -> AssistantMessage:
+    if not isinstance(message, dict):
+        raise MetaAPIError("Model message had an unexpected shape.")
+    content = message.get("content")
+    if content is not None and not isinstance(content, str):
+        raise MetaAPIError("Model message content had an unexpected type.")
+    tool_calls: list[ToolCall] = []
+    raw_calls = message.get("tool_calls") or []
+    if not isinstance(raw_calls, list):
+        raise MetaAPIError("Model tool_calls had an unexpected shape.")
+    for raw in raw_calls:
+        try:
+            call_id = raw["id"]
+            name = raw["function"]["name"]
+            raw_args = raw["function"].get("arguments", "{}")
+        except (KeyError, TypeError) as exc:
+            raise MetaAPIError("Model tool call was missing id, name, or arguments.") from exc
+        if not isinstance(call_id, str) or not isinstance(name, str):
+            raise MetaAPIError("Model tool call id/name had an unexpected type.")
+        try:
+            arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        except json.JSONDecodeError as exc:
+            raise MetaAPIError(f"Tool call '{name}' arguments were not valid JSON.") from exc
+        if not isinstance(arguments, dict):
+            raise MetaAPIError(f"Tool call '{name}' arguments were not a JSON object.")
+        tool_calls.append(ToolCall(call_id, name, arguments))
+    return AssistantMessage(content, tool_calls, message)
+
+
 class MetaModelClient:
     def __init__(self, settings: Settings, transport: JsonTransport | None = None) -> None:
         self._settings = settings
@@ -122,7 +169,7 @@ class MetaModelClient:
         payload_model: type[T],
     ) -> T:
         if not live_model_available(self._settings):
-            raise ModelNotConfiguredError("META_API_KEY/META_MODEL_API_URL are not set.")
+            raise ModelNotConfiguredError("MODEL_API_KEY is not set.")
         assert self._settings.meta_model_api_url
         assert self._settings.meta_api_key
         body = {
@@ -151,3 +198,32 @@ class MetaModelClient:
             return payload_model.model_validate(payload)
         except ValidationError as exc:
             raise MetaAPIError(f"Model output failed strict validation: {exc.errors()}.") from exc
+
+    def chat_with_tools(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> AssistantMessage:
+        """Send messages plus native function tools; parse tool_calls strictly."""
+        if not live_model_available(self._settings):
+            raise ModelNotConfiguredError("MODEL_API_KEY is not set.")
+        assert self._settings.meta_model_api_url
+        assert self._settings.meta_api_key
+        body = {
+            "model": self._settings.meta_model_name,
+            "messages": messages,
+            "tools": tools,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._settings.meta_api_key}",
+            "Content-Type": "application/json",
+        }
+        raw = self._transport(
+            self._settings.meta_model_api_url, headers, body, self._settings.request_timeout_s
+        )
+        try:
+            message = raw["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise MetaAPIError("Model response had no usable choice message.") from exc
+        return parse_assistant_message(message)

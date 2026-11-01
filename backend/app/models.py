@@ -92,6 +92,7 @@ class FMSProgram(BaseModel):
     route: list[str]
     loaded: list[str]
     held: list[str]
+    loaded_actions: list[ClearanceAction]
     source: Literal["atc", "pilot", "corrected"]
     provenance: Provenance
     summary: str
@@ -276,3 +277,158 @@ class DemoRequest(BaseModel):
 
     use_live: bool = False
     scenario_id: str | None = None
+
+
+class SeparationMinima(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_lateral_nm: float
+    vertical_at_min_lateral_ft: float
+    min_vertical_ft: float
+    lateral_at_min_vertical_nm: float
+
+
+class CausalStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step: int
+    stage: str
+    detail: str
+
+
+class SafetyWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conflict_time_s: float | None
+    first_warning_time_s: float
+    last_safe_correction_s: float | None
+    seconds_remaining_s: float | None
+    position_at_last_safe: dict[str, float] | None
+    min_sep_no_correction: SeparationMinima
+    min_sep_after_correction: SeparationMinima
+    causal_chain: list[CausalStep]
+    basis: str
+
+
+class ResolutionCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    action_human: str
+    source_evidence: str | None
+    conflict_after: bool
+    min_lateral_nm: float
+    min_vertical_ft: float
+    verification: Literal["VERIFIED", "NOT_RESOLVED"]
+    safe_reason: str
+
+
+class VerificationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str
+    verified: bool
+    matrix_overall: OverallStatus
+    conflict_after: bool
+    min_lateral_nm: float
+    min_vertical_ft: float
+    reason: str
+
+
+class Fingerprints(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc: str
+    pilot: str
+    fms: str
+    all_agree: bool
+    display_id: str
+
+
+class AuditEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seq: int
+    type: str
+    provenance: str
+    model: str | None
+    result: dict
+    human_confirmation: str
+    prev_hash: str
+    hash: str
+
+
+class AuditVerify(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    valid: bool
+    length: int
+    head: str | None
+    first_bad_seq: int | None
+
+
+class ToolCallRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    turn: int
+    tool: str
+    ok: bool
+    summary: str
+
+
+class CoordinationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recommended_candidate_id: str | None
+    summary: str
+    rationale: str
+    tool_calls: list[ToolCallRecord]
+    provenance: Provenance
+    model: str
+    overridden: bool
+    note: str | None = None
+
+
+class SafetyWindowRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc: Clearance
+    pilot: Clearance
+    fms: FMSProgram
+    scenario_id: str | None = None
+
+
+class EnumerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc: Clearance
+    pilot: Clearance
+    fms: FMSProgram
+    scenario_id: str | None = None
+
+
+class VerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc: Clearance
+    pilot: Clearance
+    fms: FMSProgram
+    candidate_id: str
+    scenario_id: str | None = None
+
+
+class FingerprintRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc: Clearance
+    pilot: Clearance
+    fms: FMSProgram
+
+
+class CoordinateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc_text: str
+    pilot_text: str
+    scenario_id: str | None = None
+    use_live: bool = False

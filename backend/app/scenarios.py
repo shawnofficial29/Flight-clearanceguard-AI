@@ -8,7 +8,7 @@ from .agents import atc_intent, explanation, pilot_intent
 from .config import Settings
 from .fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT
 from .models import BADGE_LABELS, CorrectionResult, DemoResult, ScenarioGeometry, ScenarioResult
-from .services import comparison, conflict, fms
+from .services import audit, comparison, conflict, fms
 from .services.model_client import JsonTransport
 
 DEFAULT_GEOMETRY = ScenarioGeometry()
@@ -86,12 +86,33 @@ def run_scenario(
 ) -> ScenarioResult:
     force_fixture = not use_live
     atc = atc_intent.parse_atc(scenario.atc_text, settings, transport, force_fixture=force_fixture)
+    audit.append(
+        "parse_atc",
+        {"callsign": atc.callsign, "actions": len(atc.actions), "scenario": scenario.id},
+        provenance=atc.provenance,
+        model=atc.model,
+    )
     pilot = pilot_intent.parse_pilot(
         scenario.pilot_text, settings, transport, force_fixture=force_fixture
     )
+    audit.append(
+        "parse_pilot",
+        {"callsign": pilot.callsign, "actions": len(pilot.actions), "scenario": scenario.id},
+        provenance=pilot.provenance,
+        model=pilot.model,
+    )
     program = fms.program_from_intent(pilot, source="pilot")
+    audit.append("fms_program", {"summary": program.summary, "route": program.route})
     matrix = comparison.build_matrix(atc, pilot, program)
+    audit.append(
+        "compare",
+        {"overall": matrix.overall, "categories": sorted({f.category for f in matrix.findings})},
+    )
     prediction = conflict.predict(program, scenario.geometry)
+    audit.append(
+        "predict_conflict",
+        {"conflict": prediction.conflict, "t_s": prediction.first_conflict_time_s},
+    )
     narrative = explanation.explain(
         matrix,
         prediction,
@@ -117,8 +138,18 @@ def run_scenario(
         scenario.corrected_text, settings, transport, force_fixture=force_fixture
     )
     corrected_program = fms.program_corrected(atc)
+    audit.append(
+        "correct_fms",
+        {"summary": corrected_program.summary, "route": corrected_program.route},
+        human_confirmation="simulated-pilot-confirmed",
+    )
     corrected_matrix = comparison.build_matrix(atc, corrected_pilot, corrected_program)
     corrected_prediction = conflict.predict(corrected_program, scenario.geometry)
+    audit.append(
+        "verify_resolution",
+        {"overall": corrected_matrix.overall, "conflict": corrected_prediction.conflict},
+        human_confirmation="simulated-pilot-confirmed",
+    )
     corrected_narrative = explanation.explain(
         corrected_matrix,
         corrected_prediction,

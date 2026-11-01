@@ -93,6 +93,7 @@ def program_from_intent(intent: Clearance, source: Literal["atc", "pilot"] = "pi
         route=route,
         loaded=[_action_label(a) for a in loaded_actions],
         held=[_action_label(a) for a in held_actions],
+        loaded_actions=loaded_actions,
         source=source,
         provenance=intent.provenance,
         summary=summary,
