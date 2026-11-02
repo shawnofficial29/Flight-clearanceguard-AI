@@ -14,14 +14,13 @@ import type {
   VerificationResult,
 } from './api/types';
 import { Header } from './components/Header';
-import { AtcPanel } from './components/AtcPanel';
-import { PilotFmsPanel } from './components/PilotFmsPanel';
-import { MatrixPanel } from './components/MatrixPanel';
+import { DemoStepper } from './components/DemoStepper';
+import { AlertCard } from './components/AlertCard';
+import { IntentCompare } from './components/IntentCompare';
+import { EvidencePanel } from './components/EvidencePanel';
 import { RouteView } from './components/RouteView';
 import { AltitudeChart } from './components/AltitudeChart';
 import { SafetyPanel } from './components/SafetyPanel';
-import { AgentPanel } from './components/AgentPanel';
-import { AudioPanel } from './components/AudioPanel';
 
 function tripleOf(demo: DemoResult): IntentTriple {
   return { atc: demo.atc, pilot: demo.pilot, fms: demo.fms };
@@ -29,6 +28,32 @@ function tripleOf(demo: DemoResult): IntentTriple {
 
 function correctedTripleOf(demo: DemoResult, correction: CorrectionResult): IntentTriple {
   return { atc: demo.atc, pilot: correction.corrected_pilot, fms: correction.fms };
+}
+
+/** Waypoint names named by backend clearance/FMS data (display labels only). */
+function fixesOf(demo: DemoResult | null): string[] {
+  if (demo === null) return [];
+  const names = new Set<string>();
+  for (const actionItem of demo.atc.actions) {
+    if (actionItem.target_fix !== null) names.add(actionItem.target_fix);
+    if (actionItem.trigger_value !== null) names.add(actionItem.trigger_value);
+  }
+  for (const fix of demo.fms.route) names.add(fix);
+  if (demo.fms.lateral_direct_to !== null) names.add(demo.fms.lateral_direct_to);
+  if (demo.fms.climb_start_fix !== null) names.add(demo.fms.climb_start_fix);
+  return [...names];
+}
+
+/** ATC via-fix named by backend actions, when the clearance names one. */
+function atcViaOf(demo: DemoResult | null): string | null {
+  if (demo === null) return null;
+  for (const actionItem of demo.atc.actions) {
+    if (actionItem.trigger_value !== null) return actionItem.trigger_value;
+  }
+  for (const actionItem of demo.atc.actions) {
+    if (actionItem.target_fix !== null) return actionItem.target_fix;
+  }
+  return null;
 }
 
 export function App(): React.JSX.Element {
@@ -218,8 +243,18 @@ export function App(): React.JSX.Element {
   const activeConflict = correction?.conflict ?? demo?.conflict ?? null;
   const activeComparison = correction?.comparison ?? demo?.comparison ?? null;
 
+  const selectedScenario = scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
+  const scenarioLine =
+    selectedScenario === null
+      ? 'Select a scenario, then run the demo.'
+      : `Scenario ${selectedScenario.id} — ${selectedScenario.title}.`;
+  const callsign = demo?.atc.callsign ?? demo?.fms.callsign ?? null;
+
   return (
     <div className="app">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <Header
         health={health}
         offline={offline}
@@ -234,7 +269,8 @@ export function App(): React.JSX.Element {
         onCorrect={() => void handleCorrect()}
         onReset={() => void handleReset()}
       />
-      <main>
+      <DemoStepper demo={demo} correction={correction} />
+      <main id="main-content">
         {offline ? (
           <div className="banner banner-offline" role="alert">
             Backend offline at {BASE_URL}. Start it with{' '}
@@ -254,50 +290,94 @@ export function App(): React.JSX.Element {
           </div>
         ) : null}
         {demoLoading ? <p className="meta-line">Running demo…</p> : null}
-        <div className="row">
-          <AtcPanel clearance={demo?.atc ?? null} />
-          <PilotFmsPanel
-            pilot={correction?.corrected_pilot ?? demo?.pilot ?? null}
-            fms={correction?.fms ?? demo?.fms ?? null}
-            comparison={activeComparison}
-          />
-        </div>
-        <MatrixPanel comparison={activeComparison} />
-        <div className="row">
-          <RouteView conflict={activeConflict} corrected={hasCorrection} />
-          <AltitudeChart
-            conflict={activeConflict}
-            reference={hasCorrection ? (demo?.conflict ?? null) : null}
-            safety={safety}
-          />
-        </div>
-        <div className="row">
-          <SafetyPanel
-            conflict={activeConflict}
-            safety={safety}
-            candidates={candidates}
-            selectedId={selectedId}
-            appliedId={appliedId}
-            verification={verification}
-            verifying={verifying}
-            correcting={correcting}
-            correction={correction}
-            onSelectCandidate={(id) => void handleSelectCandidate(id)}
-            onConfirmCorrection={() => void handleCorrect()}
-          />
-          <AgentPanel
-            coordination={coordination}
-            fingerprints={fingerprints}
-            audit={audit}
-            auditEvents={auditEvents}
-            selectedId={selectedId}
-            appliedId={appliedId}
-            correction={correction}
-            verification={verification}
-            active={demo !== null}
-          />
-        </div>
-        <AudioPanel
+        {demo === null ? (
+          <div className="ops-grid">
+            <div className="workspace">
+              <div className="radar-wrap">
+                <RouteView
+                  conflict={null}
+                  corrected={false}
+                  callsign={null}
+                  fixes={[]}
+                  atcVia={null}
+                />
+                <div className="radar-prompt">
+                  <p>One omitted condition can change the aircraft trajectory.</p>
+                  <p>Run the demo to see ClearanceGuard catch it.</p>
+                </div>
+              </div>
+              <section className="panel vert-compact" aria-label="Vertical profile">
+                <h2>Altitude versus time (ft)</h2>
+                <p className="empty">Altitude and time appear here once the demo runs.</p>
+              </section>
+            </div>
+            <div className="rail">
+              <section className="panel">
+                <h2>Ready to run</h2>
+                <p>{scenarioLine}</p>
+                <p className="meta-line">Press Run Demo in the header to start.</p>
+              </section>
+            </div>
+          </div>
+        ) : (
+          <div className="ops-grid">
+            <div className="workspace">
+              <RouteView
+                conflict={correction?.conflict ?? demo.conflict}
+                corrected={hasCorrection}
+                callsign={callsign}
+                fixes={fixesOf(demo)}
+                atcVia={atcViaOf(demo)}
+              />
+              <div className="vert-compact">
+                <AltitudeChart
+                  conflict={correction?.conflict ?? demo.conflict}
+                  reference={hasCorrection ? demo.conflict : null}
+                  safety={safety}
+                />
+              </div>
+            </div>
+            <div className="rail">
+              <AlertCard
+                demo={demo}
+                correction={correction}
+                comparison={correction?.comparison ?? demo.comparison}
+                conflict={correction?.conflict ?? demo.conflict}
+              />
+              <IntentCompare comparison={correction?.comparison ?? demo.comparison} />
+              <SafetyPanel
+                conflict={correction?.conflict ?? demo.conflict}
+                safety={safety}
+                candidates={candidates}
+                selectedId={selectedId}
+                appliedId={appliedId}
+                verification={verification}
+                verifying={verifying}
+                correcting={correcting}
+                correction={correction}
+                onSelectCandidate={(id) => void handleSelectCandidate(id)}
+                onConfirmCorrection={() => void handleCorrect()}
+              />
+            </div>
+          </div>
+        )}
+        <EvidencePanel
+          atc={demo?.atc ?? null}
+          pilot={correction?.corrected_pilot ?? demo?.pilot ?? null}
+          fms={correction?.fms ?? demo?.fms ?? null}
+          comparison={activeComparison}
+          conflict={activeConflict}
+          safety={safety}
+          candidates={candidates}
+          coordination={coordination}
+          fingerprints={fingerprints}
+          audit={audit}
+          auditEvents={auditEvents}
+          selectedId={selectedId}
+          appliedId={appliedId}
+          correction={correction}
+          verification={verification}
+          active={demo !== null}
           useLive={useLive}
           voiceConfigured={health?.voice_configured ?? null}
           offline={offline}

@@ -34,14 +34,20 @@ export function Header(props: HeaderProps): React.JSX.Element {
   return (
     <header className="app-header">
       <div className="brand">
-        <h1>ClearanceGuard AI</h1>
-        {offline ? (
-          <span className="pill pill-offline">Backend offline</span>
-        ) : health ? (
-          <span className="pill pill-ok">Backend connected</span>
-        ) : (
-          <span className="pill">Checking backend…</span>
-        )}
+        <div className="brand-row">
+          <h1>ClearanceGuard AI</h1>
+          {offline ? (
+            <span className="pill pill-offline">Backend offline</span>
+          ) : health ? (
+            <span className="pill pill-ok">Backend connected</span>
+          ) : (
+            <span className="pill">Checking backend…</span>
+          )}
+        </div>
+        <p className="value-prop">
+          Detects when ATC intent, pilot readback, and FMS programming disagree before
+          execution.
+        </p>
         {health && !offline ? (
           <span className="meta-line">
             Meta API: {health.meta_api_configured ? 'configured' : 'not configured'}
@@ -88,7 +94,12 @@ export function Header(props: HeaderProps): React.JSX.Element {
             Live Meta
           </label>
         </fieldset>
-        <button type="button" disabled={busy || offline} onClick={onRunDemo}>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy || offline}
+          onClick={onRunDemo}
+        >
           Run Demo
         </button>
         <button type="button" disabled={busy || offline || !hasDemo} onClick={onCorrect}>
