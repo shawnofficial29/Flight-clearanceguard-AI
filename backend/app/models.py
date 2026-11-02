@@ -216,6 +216,7 @@ class DemoResult(BaseModel):
 class CorrectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    corrected_pilot: Clearance
     fms: FMSProgram
     comparison: ComparisonMatrix
     conflict: ConflictPrediction

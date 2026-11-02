@@ -161,6 +161,7 @@ def run_scenario(
     )
     resolved = corrected_matrix.overall == "agree" and not corrected_prediction.conflict
     corrected = CorrectionResult(
+        corrected_pilot=corrected_pilot,
         fms=corrected_program,
         comparison=corrected_matrix,
         conflict=corrected_prediction,

@@ -7,6 +7,7 @@ from typing import Any
 from .config import Settings
 from .models import CorrectionResult, DemoResult
 from .scenarios import get_scenario, run_scenario
+from .services import audit
 from .services.model_client import JsonTransport
 
 CORRECTED_PILOT_TRANSCRIPT = (
@@ -17,7 +18,9 @@ _SESSION: dict[str, Any] = {}
 
 
 def reset_session() -> dict[str, str]:
+    """Start a clean demonstration session, including the audit chain."""
     _SESSION.clear()
+    audit.reset_chain()
     return {"status": "reset"}
 
 
