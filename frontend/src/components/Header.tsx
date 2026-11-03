@@ -3,115 +3,96 @@ import type { Health, ScenarioInfo } from '../api/types';
 interface HeaderProps {
   health: Health | null;
   offline: boolean;
-  scenarios: ScenarioInfo[];
-  scenarioId: string;
+  /** The single loaded scenario; null while the backend list loads. */
+  scenario: ScenarioInfo | null;
   useLive: boolean;
   busy: boolean;
   hasDemo: boolean;
-  onScenarioChange: (id: string) => void;
   onUseLiveChange: (useLive: boolean) => void;
   onRunDemo: () => void;
   onCorrect: () => void;
   onReset: () => void;
+  /** Confirmation flow running; locks mode/run/correct (Reset stays live). */
+  flowActive?: boolean;
 }
 
 export function Header(props: HeaderProps): React.JSX.Element {
   const {
     health,
     offline,
-    scenarios,
-    scenarioId,
+    scenario,
     useLive,
     busy,
     hasDemo,
-    onScenarioChange,
     onUseLiveChange,
     onRunDemo,
     onCorrect,
     onReset,
+    flowActive = false,
   } = props;
   const canUseLive = health !== null && health.meta_api_configured && !offline;
+  const locked = busy || flowActive;
+  const statusWord = offline ? 'Offline' : useLive ? 'Live' : 'Simulation';
   return (
     <header className="app-header">
       <div className="brand">
         <div className="brand-row">
           <h1>ClearanceGuard AI</h1>
-          {offline ? (
-            <span className="pill pill-offline">Backend offline</span>
-          ) : health ? (
-            <span className="pill pill-ok">Backend connected</span>
-          ) : (
-            <span className="pill">Checking backend…</span>
-          )}
+          <span className="conn-status">
+            <span className="status-dot" aria-hidden="true" />
+            <span className="status-word">{statusWord}</span>
+          </span>
         </div>
         <p className="value-prop">
-          Detects when ATC intent, pilot readback, and FMS programming disagree before
-          execution.
+          Catches clearance mismatches before the aircraft acts on them.
         </p>
-        {health && !offline ? (
-          <span className="meta-line">
-            Meta API: {health.meta_api_configured ? 'configured' : 'not configured'}
-            {' · '}Voice: {health.voice_configured ? 'configured' : 'not configured'}
-            {' · '}Model: {health.model}
-          </span>
-        ) : null}
       </div>
       <div className="controls">
-        <label className="control">
-          Scenario
-          <select
-            value={scenarioId}
-            disabled={busy || scenarios.length === 0}
-            onChange={(event) => onScenarioChange(event.target.value)}
+        <div className="control">
+          <span className="control-label">Scenario</span>
+          <span className="scenario-name">{scenario === null ? 'Loading…' : scenario.title}</span>
+        </div>
+        <div className="mode-pill" role="group" aria-label="Mode">
+          <button
+            type="button"
+            aria-pressed={!useLive}
+            disabled={locked || offline}
+            onClick={() => onUseLiveChange(false)}
           >
-            {scenarios.map((scenario) => (
-              <option key={scenario.id} value={scenario.id}>
-                {scenario.id} — {scenario.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <fieldset className="mode-group">
-          <legend>Mode</legend>
-          <label className="control-inline">
-            <input
-              type="radio"
-              name="mode"
-              checked={!useLive}
-              disabled={busy || offline}
-              onChange={() => onUseLiveChange(false)}
-            />
-            Fixture Simulation
-          </label>
-          <label className="control-inline">
-            <input
-              type="radio"
-              name="mode"
-              checked={useLive}
-              disabled={busy || !canUseLive}
-              onChange={() => onUseLiveChange(true)}
-            />
-            Live Meta
-          </label>
-        </fieldset>
+            Simulation
+          </button>
+          <button
+            type="button"
+            aria-pressed={useLive}
+            disabled={locked || !canUseLive}
+            title={
+              canUseLive ? 'Use the live Meta API' : 'Meta API unavailable in backend process'
+            }
+            onClick={() => onUseLiveChange(true)}
+          >
+            Live
+          </button>
+        </div>
         <button
           type="button"
-          className="btn-primary"
-          disabled={busy || offline}
+          className="btn-primary btn-run"
+          disabled={locked || offline}
           onClick={onRunDemo}
         >
-          Run Demo
+          ▶ Run Demo
         </button>
-        <button type="button" disabled={busy || offline || !hasDemo} onClick={onCorrect}>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={locked || offline || !hasDemo}
+          onClick={onCorrect}
+        >
           Pilot Correction
         </button>
-        <button type="button" disabled={busy} onClick={onReset}>
+        <button type="button" className="btn-secondary" disabled={busy} onClick={onReset}>
           Reset
         </button>
       </div>
-      {health !== null && !health.meta_api_configured && !offline ? (
-        <p className="meta-line">Meta API unavailable in backend process.</p>
-      ) : null}
     </header>
   );
 }

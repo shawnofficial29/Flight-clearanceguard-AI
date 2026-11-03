@@ -80,13 +80,14 @@ class Clearance(ClearancePayload):
 
 
 class FMSProgram(BaseModel):
-    """Simulated FMS state. climb_start_fix None means an immediate climb."""
+    """Simulated FMS state. climb_start_fix None means an immediate altitude change."""
 
     model_config = ConfigDict(extra="forbid")
 
     callsign: str | None
     cleared_fl: int | None
     cleared_alt_ft: int | None
+    target_speed_kts: int | None
     climb_start_fix: str | None
     lateral_direct_to: str | None
     route: list[str]
@@ -141,6 +142,14 @@ class ScenarioGeometry(BaseModel):
     own_init_alt_ft: float = 15000.0
     climb_rate_fpm: float = 2000.0
     descend_rate_fpm: float = 1500.0
+    # Optional landing tail past MERIT (arrival procedure): the clearance
+    # holds level through the encounter, then the aircraft descends toward
+    # landing_alt_ft and slows toward landing_speed_kt for the airport.
+    landing_alt_ft: float | None = None
+    landing_speed_kt: float | None = None
+    # Landing slowdown rate (kt/s): gentle so the speed keeps easing down
+    # alongside the descent instead of finishing in seconds.
+    landing_decel_kt_s: float = 1.0
     merit_nm: tuple[float, float] = (20.0, 0.0)
     intruder_start_nm: tuple[float, float] = (18.0, -18.0)
     intruder_vel_kt: tuple[float, float] = (0.0, 300.0)
@@ -157,9 +166,11 @@ class ProfilePoint(BaseModel):
     t_s: float
     meta_x_nm: float
     meta_ft: float
+    meta_kt: float
     intruder_x_nm: float
     intruder_y_nm: float
     intruder_ft: float
+    intruder_kt: float
 
 
 class ConflictPrediction(BaseModel):
@@ -171,11 +182,16 @@ class ConflictPrediction(BaseModel):
     vertical_ft_at_conflict: float | None
     closest_lateral_nm: float
     min_vertical_ft: float
+    merit_time_s: float | None
+    merit_vertical_gap_ft: float | None
+    plan_merit_time_s: float | None = None
+    intruder_merit_time_s: float | None = None
     conflict_point_nm: dict[str, float] | None
     lateral_threshold_nm: float
     vertical_threshold_ft: float
     basis: str
     profile: list[ProfilePoint]
+    plan_profile: list[ProfilePoint] | None = None
 
 
 class Explanation(BaseModel):
@@ -246,6 +262,7 @@ class FMSRequest(BaseModel):
 
     intent: Clearance
     source: Literal["atc", "pilot"] = "pilot"
+    scenario_id: str | None = None
 
 
 class CompareRequest(BaseModel):

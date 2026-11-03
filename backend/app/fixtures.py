@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 DEMO_ATC_TRANSCRIPT = (
-    "META 452, after passing MERIT, climb to flight level 230 and proceed direct PONCT."
+    "META 452, reduce speed to 250 knots now. "
+    "After MERIT, descend and maintain 15,000 feet."
 )
-DEMO_PILOT_TRANSCRIPT = "META 452, climb to flight level 230 and proceed direct PONCT."
+DEMO_PILOT_TRANSCRIPT = (
+    "META 452, reduce speed to 250 knots now. "
+    "After MERIT, descend and maintain 15,000 feet."
+)
 MISSING_PHRASE = "after passing MERIT"
 
 
@@ -37,18 +41,19 @@ FIXTURE_ATC_PAYLOAD: dict = {
     "callsign_confidence": 0.97,
     "actions": [
         _action(
-            "CLIMB",
-            numeric_value=230,
-            unit="FL",
-            trigger_type="AFTER_WAYPOINT",
-            trigger_value="MERIT",
-            evidence="after passing MERIT, climb to flight level 230",
+            "SPEED",
+            numeric_value=250,
+            unit="KTS",
+            evidence="reduce speed to 250 knots now",
             confidence=0.97,
         ),
         _action(
-            "DIRECT_TO",
-            target_fix="PONCT",
-            evidence="proceed direct PONCT",
+            "DESCEND",
+            numeric_value=15000,
+            unit="FT",
+            trigger_type="AFTER_WAYPOINT",
+            trigger_value="MERIT",
+            evidence="After MERIT, descend to 15,000 feet",
             confidence=0.97,
         ),
     ],
@@ -60,18 +65,21 @@ FIXTURE_PILOT_PAYLOAD: dict = {
     "callsign_evidence": "META 452",
     "callsign_confidence": 0.95,
     "actions": [
-        # No condition stated by the pilot: the climb stays IMMEDIATE.
+        # Correct readback: the condition is stated; the FMS entry drops it.
         _action(
-            "CLIMB",
-            numeric_value=230,
-            unit="FL",
-            evidence="climb to flight level 230",
+            "SPEED",
+            numeric_value=250,
+            unit="KTS",
+            evidence="reduce speed to 250 knots now",
             confidence=0.95,
         ),
         _action(
-            "DIRECT_TO",
-            target_fix="PONCT",
-            evidence="proceed direct PONCT",
+            "DESCEND",
+            numeric_value=15000,
+            unit="FT",
+            trigger_type="AFTER_WAYPOINT",
+            trigger_value="MERIT",
+            evidence="After MERIT, descend to 15,000 feet",
             confidence=0.95,
         ),
     ],

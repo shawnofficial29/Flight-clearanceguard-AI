@@ -99,7 +99,12 @@ def enumerate_candidates(
     candidates: list[ResolutionCandidate] = []
     seen: set[str] = set()
     for position, finding in enumerate(matrix.findings):
-        if finding.scope != "atc_vs_pilot" and finding.category != "PARTIAL_FMS_LOAD":
+        if finding.scope not in ("atc_vs_pilot", "pilot_vs_fms"):
+            continue
+        if finding.scope == "pilot_vs_fms" and finding.category not in (
+            "PARTIAL_FMS_LOAD",
+            "MISSING_CONDITION",
+        ):
             continue
         key = (finding.category, finding.action)
         if key in seen:

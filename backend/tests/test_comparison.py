@@ -11,7 +11,7 @@ from app.services import comparison, fms
 def _demo_triple(settings: Settings):
     atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, settings, force_fixture=True)
     pilot = pilot_intent.parse_pilot(DEMO_PILOT_TRANSCRIPT, settings, force_fixture=True)
-    program = fms.program_from_intent(pilot, source="pilot")
+    program = fms.program_from_intent(pilot, source="pilot", drop_condition=True)
     return atc, pilot, program
 
 
@@ -22,10 +22,16 @@ def test_demo_pair_flags_missing_condition(offline_settings: Settings):
     assert matrix.missing_condition is True
     assert matrix.missing_phrase == MISSING_PHRASE
     assert {f.category for f in matrix.findings} == {"MISSING_CONDITION"}
+    assert {f.scope for f in matrix.findings} == {"pilot_vs_fms"}
+    assert {f.action for f in matrix.findings} == {"DESCEND"}
     aspects = {row.aspect: row for row in matrix.rows}
-    assert aspects["CLIMB"].status == "mismatch"
-    assert aspects["CLIMB"].category == "MISSING_CONDITION"
-    assert aspects["DIRECT_TO"].status == "match"
+    assert aspects["DESCEND"].status == "mismatch"
+    assert aspects["DESCEND"].category == "MISSING_CONDITION"
+    assert aspects["SPEED"].status == "match"
+    assert aspects["SPEED"].atc == "250 kt now"
+    assert aspects["SPEED"].pilot == "250 kt now"
+    assert aspects["SPEED"].fms == "250 kt now"
+    assert "DIRECT_TO" not in aspects
     assert aspects["Callsign"].status == "match"
     for row in matrix.rows:
         assert row.atc and row.pilot and row.fms and row.predicted
@@ -46,7 +52,7 @@ def test_uncertainty_gate_requires_verification(offline_settings: Settings):
     atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, offline_settings, force_fixture=True)
     pilot = pilot_intent.parse_pilot(DEMO_ATC_TRANSCRIPT, offline_settings, force_fixture=True)
     dumped = pilot.model_dump()
-    dumped["actions"][0]["confidence"] = 0.5
+    dumped["actions"][1]["confidence"] = 0.5
     uncertain = Clearance.model_validate(dumped)
     program = fms.program_from_intent(uncertain, source="pilot")
     matrix = comparison.build_matrix(atc, uncertain, program)

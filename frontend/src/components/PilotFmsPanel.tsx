@@ -67,7 +67,7 @@ export function PilotFmsPanel(props: PilotFmsProps): React.JSX.Element {
         <dd>{fms.callsign ?? '—'}</dd>
         <dt>Cleared altitude</dt>
         <dd>{fms.cleared_alt_ft === null ? '—' : `${fms.cleared_alt_ft.toLocaleString()} ft`}</dd>
-        <dt>Climb start fix</dt>
+        <dt>Altitude change fix</dt>
         <dd>{fms.climb_start_fix ?? 'Immediate (none)'}</dd>
         <dt>Direct to</dt>
         <dd>{fms.lateral_direct_to ?? '—'}</dd>

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.agents import atc_intent, pilot_intent  # noqa: E402
 from app.config import Settings, live_model_available, load_settings  # noqa: E402
 from app.fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, MISSING_PHRASE  # noqa: E402
+from app.scenarios import ARRIVAL_GEOMETRY  # noqa: E402
 from app.services import comparison, conflict, fms  # noqa: E402
 from app.services.model_client import MetaAPIError, ModelNotConfiguredError  # noqa: E402
 
@@ -58,26 +59,40 @@ def main() -> int:
     if FAILURES:
         return 1
 
-    atc_climbs = [a for a in atc.actions if a.action_type == "CLIMB"]
-    pilot_climbs = [a for a in pilot.actions if a.action_type == "CLIMB"]
-    if not atc_climbs or atc_climbs[0].trigger_type != "AFTER_WAYPOINT":
-        fail(f"ATC climb lacks the AFTER_WAYPOINT trigger: {atc.actions}.")
-    elif atc_climbs[0].trigger_value != "MERIT":
-        fail(f"ATC condition fix is {atc_climbs[0].trigger_value!r}; expected 'MERIT'.")
-    if not pilot_climbs:
-        fail("Pilot readback has no CLIMB action.")
-    elif pilot_climbs[0].trigger_type != "IMMEDIATE" or pilot_climbs[0].trigger_value is not None:
+    atc_descends = [a for a in atc.actions if a.action_type == "DESCEND"]
+    pilot_descends = [a for a in pilot.actions if a.action_type == "DESCEND"]
+    if not atc_descends or atc_descends[0].trigger_type != "AFTER_WAYPOINT":
+        fail(f"ATC descend lacks the AFTER_WAYPOINT trigger: {atc.actions}.")
+    elif atc_descends[0].trigger_value != "MERIT":
+        fail(f"ATC condition fix is {atc_descends[0].trigger_value!r}; expected 'MERIT'.")
+    if not pilot_descends:
+        fail("Pilot readback has no DESCEND action.")
+    elif (
+        pilot_descends[0].trigger_type != "AFTER_WAYPOINT"
+        or pilot_descends[0].trigger_value != "MERIT"
+    ):
         fail(
-            "Pilot readback must leave the unstated condition IMMEDIATE/null; got "
-            f"{pilot_climbs[0].trigger_type!r}/{pilot_climbs[0].trigger_value!r}."
+            "Pilot readback must state the condition AFTER_WAYPOINT/MERIT; got "
+            f"{pilot_descends[0].trigger_type!r}/{pilot_descends[0].trigger_value!r}."
         )
+    atc_speeds = [a for a in atc.actions if a.action_type == "SPEED"]
+    pilot_speeds = [a for a in pilot.actions if a.action_type == "SPEED"]
+    if not atc_speeds or (atc_speeds[0].numeric_value, atc_speeds[0].unit) != (250, "KTS"):
+        fail(f"ATC clearance lacks the 250 KTS speed target: {atc.actions}.")
+    elif atc_speeds[0].trigger_type != "IMMEDIATE":
+        fail(f"ATC speed must apply now (IMMEDIATE): {atc.actions}.")
+    if not pilot_speeds:
+        fail("Pilot readback has no SPEED action.")
+    elif pilot_speeds[0].trigger_type != "IMMEDIATE":
+        fail("Pilot readback must read back the speed as immediate (now).")
 
-    program = fms.program_from_intent(pilot, source="pilot")
+    program = fms.program_from_intent(pilot, source="pilot", drop_condition=True)
     matrix = comparison.build_matrix(atc, pilot, program)
     print(f"comparison overall: {matrix.overall}; missing: {matrix.missing_phrase}")
     if not matrix.missing_condition or matrix.missing_phrase != MISSING_PHRASE:
         fail(f"Missing '{MISSING_PHRASE}' condition was not detected.")
-    prediction = conflict.predict(program)
+    geometry = ARRIVAL_GEOMETRY
+    prediction = conflict.predict(program, geometry)
     print(
         f"conflict: {prediction.conflict} "
         f"(T+{prediction.first_conflict_time_s}s, "

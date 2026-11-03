@@ -45,9 +45,13 @@ class VoiceAPIError(Exception):
 
 VOICE_FIXTURES: dict[str, str] = {
     "meta452_atc.wav": (
-        "META 452, after passing MERIT, climb to flight level 230 and proceed direct PONCT."
+        "META 452, reduce speed to 250 knots now. "
+        "After MERIT, descend and maintain 15,000 feet."
     ),
-    "meta452_readback.wav": "META 452, climb to flight level 230 and proceed direct PONCT.",
+    "meta452_readback.wav": (
+        "META 452, reduce speed to 250 knots now. "
+        "After MERIT, descend and maintain 15,000 feet."
+    ),
 }
 
 

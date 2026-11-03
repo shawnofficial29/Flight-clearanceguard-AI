@@ -68,13 +68,14 @@ Health: `GET http://127.0.0.1:8000/health`
 4. Live mode: set `MODEL_API_KEY` in `.env` and repeat with
    `{"use_live": true}`.
 
-Demo clearance: `META 452, after passing MERIT, climb to flight level 230 and
-proceed direct PONCT.` Pilot readback omits `after passing MERIT`.
+Demo clearance: `META 452, maintain 23,000 feet.` The pilot mishears it as
+22,000 ft and sets that instead.
 
-Three registry scenarios (`GET /api/scenarios`, `scenario_id` on demo and
-conflict calls): `early-climb` (missing condition, conflict), `altitude-value`
-(11,000 vs 10,000 ft, conflict), `wrong-direct` (wrong fix, no conflict).
-Each runs parse → FMS → compare → predict → correct → resolve.
+One registry scenario (`GET /api/scenarios`, `scenario_id` on demo and
+conflict calls): `altitude-sync` — ATC clears 23,000 ft, the pilot sets
+22,000 ft (changed value, conflict at T+165 s). The run goes
+parse → FMS → compare → predict → correct → resolve: ATC confirms 23,000
+first, then the pilot verifies, ending 1,000 ft above traffic.
 
 Differentiation services (all deterministic except the coordinator's
 explanations): counterfactual Safety Window (`POST /api/safety/window`),

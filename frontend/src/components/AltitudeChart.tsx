@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import type { ConflictPrediction, SafetyWindow } from '../api/types';
+import { sampleProfile } from '../utils/playbackMath';
 
 const WIDTH = 680;
 const HEIGHT = 300;
@@ -16,12 +17,14 @@ interface AltitudeChartProps {
   conflict: ConflictPrediction | null;
   reference: ConflictPrediction | null;
   safety: SafetyWindow | null;
+  /** Shared playback time; renders a cursor in sync with the map. */
+  timeS?: number | null;
 }
 
 export const AltitudeChart = memo(function AltitudeChart(
   props: AltitudeChartProps,
 ): React.JSX.Element {
-  const { conflict, reference, safety } = props;
+  const { conflict, reference, safety, timeS = null } = props;
 
   const model = useMemo(() => {
     if (conflict === null || conflict.profile.length === 0) return null;
@@ -76,8 +79,14 @@ export const AltitudeChart = memo(function AltitudeChart(
     }
     const timeTicks = [0, 1, 2, 3, 4, 5, 6].map((i) => (tMax * i) / 6);
     const altTicks = [0, 1, 2, 3, 4].map((i) => minAlt + ((maxAlt - minAlt) * i) / 4);
-    return { tMax, minAlt, maxAlt, sx, sy, executed, before, intruderAlt, conflictDot, lastSafe, timeTicks, altTicks };
-  }, [conflict, reference, safety]);
+    let cursor: { x: number; ownY: number } | null = null;
+    if (timeS !== null && tMax > 0) {
+      const clamped = Math.min(Math.max(timeS, 0), tMax);
+      const at = sampleProfile(conflict.profile, clamped);
+      if (at !== null) cursor = { x: sx(clamped), ownY: sy(at.ownFt) };
+    }
+    return { tMax, minAlt, maxAlt, sx, sy, executed, before, intruderAlt, conflictDot, lastSafe, timeTicks, altTicks, cursor };
+  }, [conflict, reference, safety, timeS]);
 
   if (model === null) {
     return (
@@ -153,6 +162,23 @@ export const AltitudeChart = memo(function AltitudeChart(
             r={5}
             className="conflict-dot"
           />
+        ) : null}
+        {model.cursor !== null ? (
+          <g aria-hidden="true">
+            <line
+              x1={round1(model.cursor.x)}
+              y1={round1(model.sy(model.maxAlt))}
+              x2={round1(model.cursor.x)}
+              y2={round1(model.sy(model.minAlt))}
+              className="alt-cursor"
+            />
+            <circle
+              cx={round1(model.cursor.x)}
+              cy={round1(model.cursor.ownY)}
+              r={4}
+              className="alt-cursor-dot"
+            />
+          </g>
         ) : null}
       </svg>
       <ul className="legend">

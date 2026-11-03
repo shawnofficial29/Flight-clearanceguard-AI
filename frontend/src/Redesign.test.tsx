@@ -22,6 +22,7 @@ import {
   makeMismatchMatrix,
   makeSafetyWindow,
   makeScenarios,
+  makeSyncDemo,
 } from './test/fixtures';
 
 afterEach(() => {
@@ -30,24 +31,62 @@ afterEach(() => {
 });
 
 describe('DemoStepper', () => {
-  it('shows three pending steps with no demo', () => {
-    render(<DemoStepper demo={null} correction={null} />);
-    expect(screen.getByText('Mismatch Detected')).not.toBeNull();
-    expect(screen.getByText('Conflict Predicted')).not.toBeNull();
-    expect(screen.getByText('Verified Resolution')).not.toBeNull();
-    expect(screen.getAllByText('Awaiting demo').length).toBe(2);
+  it('shows three pending sync steps with no demo', () => {
+    render(<DemoStepper demo={null} />);
+    expect(screen.getByText('Mismatch caught')).not.toBeNull();
+    expect(screen.getByText('ATC confirmed')).not.toBeNull();
+    expect(screen.getByText('Pilot verified')).not.toBeNull();
+    expect(screen.getByText('Awaiting demo')).not.toBeNull();
+    expect(screen.getByText('Awaiting ATC confirmation')).not.toBeNull();
+    expect(screen.getByText('Awaiting pilot verification')).not.toBeNull();
   });
 
-  it('marks mismatch and conflict from the original demo run', () => {
-    render(<DemoStepper demo={makeDemoResult()} correction={null} />);
-    expect(screen.getByText('Matrix: mismatch')).not.toBeNull();
-    expect(screen.getByText('T+215 s')).not.toBeNull();
-    expect(screen.getByText('Awaiting pilot confirmation')).not.toBeNull();
+  it('marks the caught mismatch from the demo run', () => {
+    render(
+      <DemoStepper
+        demo={makeSyncDemo()}
+        sync={{ stage: 'atc', atcClearedFt: 23000, pilotSetFt: 22000, confirmedFt: null }}
+      />,
+    );
+    expect(screen.getByText('set 22,000, cleared 23,000')).not.toBeNull();
+    expect(screen.getByText('Awaiting ATC confirmation')).not.toBeNull();
   });
 
-  it('marks resolution done after a verified correction', () => {
-    render(<DemoStepper demo={makeDemoResult()} correction={makeCorrectionResult()} />);
-    expect(screen.getByText('Pilot confirmed, verified')).not.toBeNull();
+  it('marks ATC confirmed and pilot verified from sync state', () => {
+    render(
+      <DemoStepper
+        demo={makeSyncDemo()}
+        sync={{ stage: 'done', atcClearedFt: 23000, pilotSetFt: 22000, confirmedFt: 23000 }}
+      />,
+    );
+    expect(screen.getByText('23,000 is correct')).not.toBeNull();
+    expect(screen.getByText('everyone agrees')).not.toBeNull();
+  });
+
+  it('fills the tracker and draws checks on completed steps', () => {
+    const { container } = render(
+      <DemoStepper
+        demo={makeSyncDemo()}
+        sync={{ stage: 'done', atcClearedFt: 23000, pilotSetFt: 22000, confirmedFt: 23000 }}
+      />,
+    );
+    const fill = container.querySelector('.stepper-fill') as HTMLElement | null;
+    expect(fill).not.toBeNull();
+    expect(fill?.style.width).toBe('100%');
+    expect(fill?.className).toContain('is-complete');
+    expect(container.querySelectorAll('.step-check').length).toBe(3);
+  });
+
+  it('advances the tracker halfway once ATC confirms', () => {
+    const { container } = render(
+      <DemoStepper
+        demo={makeSyncDemo()}
+        sync={{ stage: 'pilot', atcClearedFt: 23000, pilotSetFt: 22000, confirmedFt: 23000 }}
+      />,
+    );
+    const fill = container.querySelector('.stepper-fill') as HTMLElement | null;
+    expect(fill?.style.width).toBe('50%');
+    expect(fill?.className).not.toContain('is-complete');
   });
 });
 
@@ -59,6 +98,9 @@ describe('AlertCard', () => {
         correction={null}
         comparison={makeMismatchMatrix()}
         conflict={makeMismatchConflict()}
+        atc={makeDemoResult().atc}
+        pilot={makeDemoResult().pilot}
+        fms={makeDemoResult().fms}
       />,
     );
     expect(screen.getByText('CONFLICT PREDICTED')).not.toBeNull();
@@ -71,6 +113,9 @@ describe('AlertCard', () => {
         correction={null}
         comparison={makeMismatchMatrix()}
         conflict={makeClearConflict()}
+        atc={makeDemoResult().atc}
+        pilot={makeDemoResult().pilot}
+        fms={makeDemoResult().fms}
       />,
     );
     expect(screen.getByText('MISMATCH DETECTED')).not.toBeNull();
@@ -83,6 +128,9 @@ describe('AlertCard', () => {
         correction={makeCorrectionResult()}
         comparison={makeAgreeMatrix()}
         conflict={makeClearConflict()}
+        atc={makeDemoResult().atc}
+        pilot={makeCorrectionResult().corrected_pilot}
+        fms={makeCorrectionResult().fms}
       />,
     );
     expect(screen.getByText('CLEARANCE SYNCHRONIZED')).not.toBeNull();
@@ -93,7 +141,7 @@ describe('AlertCard', () => {
 describe('IntentCompare', () => {
   it('summarizes ATC, pilot, and FMS without raw category codes', () => {
     render(<IntentCompare comparison={makeMismatchMatrix()} />);
-    expect(screen.getByText('CLIMB')).not.toBeNull();
+    expect(screen.getByText('DESCEND')).not.toBeNull();
     expect(screen.queryByText('MISSING_CONDITION')).toBeNull();
   });
 });
@@ -125,9 +173,9 @@ describe('EvidencePanel', () => {
     );
   }
 
-  it('keeps full evidence mounted behind a native collapsed summary', () => {
+  it('keeps the judges evidence mounted behind a native collapsed summary', () => {
     renderEvidence();
-    const summary = screen.getByText(/Evidence: full technical details/);
+    const summary = screen.getByText(/Evidence: transcripts, matrix, safety window, fix, audit/);
     const details = summary.closest('details');
     expect(details).not.toBeNull();
     expect(details?.hasAttribute('open')).toBe(false);
@@ -135,14 +183,51 @@ describe('EvidencePanel', () => {
     expect(screen.getByText('ATC panel')).not.toBeNull();
     expect(screen.getByText('Agent verification panel')).not.toBeNull();
     expect(screen.getByText('Candidate details')).not.toBeNull();
-    expect(screen.getByText('Technical JSON')).not.toBeNull();
+    expect(screen.queryByText('Technical JSON')).toBeNull();
   });
 
   it('exposes candidate details without duplicating the selection control', () => {
     renderEvidence();
-    // Selection radios live once in the right rail, not in Evidence.
+    // Without a selection handler the table stays read-only.
     expect(screen.queryByRole('radio')).toBeNull();
-    expect(screen.getByText('missing-condition-climb-0')).not.toBeNull();
+    expect(screen.getByText('missing-condition-descend-0')).not.toBeNull();
+  });
+
+  it('hosts the single candidate selection control when wired', () => {
+    render(
+      <EvidencePanel
+        atc={makeDemoResult().atc}
+        pilot={makeDemoResult().pilot}
+        fms={makeDemoResult().fms}
+        comparison={makeMismatchMatrix()}
+        conflict={makeMismatchConflict()}
+        safety={makeSafetyWindow()}
+        candidates={makeCandidates()}
+        coordination={makeCoordination()}
+        fingerprints={makeFingerprints(false)}
+        audit={makeAuditVerify(7)}
+        auditEvents={makeAuditEvents()}
+        selectedId={null}
+        appliedId={null}
+        correction={null}
+        verification={null}
+        active
+        useLive={false}
+        voiceConfigured={false}
+        offline={false}
+        onSelectCandidate={() => {}}
+      />,
+    );
+    expect(screen.getAllByRole('radio').length).toBe(1);
+    expect(screen.getByText('missing-condition-descend-0')).not.toBeNull();
+  });
+
+  it('keeps the safety window in Evidence without backend status', () => {
+    renderEvidence();
+    expect(screen.queryByText('Backend status')).toBeNull();
+    expect(screen.getByText('Safety window')).not.toBeNull();
+    expect(screen.getByText('Causal chain')).not.toBeNull();
+    expect(screen.getByText('Conflict predicted in')).not.toBeNull();
   });
 });
 
@@ -159,13 +244,14 @@ describe('empty state', () => {
       });
     });
     render(<App />);
-    await screen.findByText('Backend connected');
+    await screen.findByText('Altitude sync — pilot sets 22,000 ft, ATC cleared 23,000 ft');
     expect(
-      screen.getByText('One omitted condition can change the aircraft trajectory.'),
+      screen.getByText('One misheard number can put the aircraft at the wrong altitude.'),
     ).not.toBeNull();
     expect(screen.getByText('Run the demo to see ClearanceGuard catch it.')).not.toBeNull();
-    expect(screen.getByText(/Scenario early-climb/)).not.toBeNull();
+    expect(screen.getByText('The scenario: one misunderstood number')).not.toBeNull();
+    expect(screen.getByText('One scenario is loaded.')).not.toBeNull();
     expect(screen.getByText('Ready to run')).not.toBeNull();
-    expect(screen.getAllByText('Run Demo').length).toBe(1);
+    expect(screen.getAllByText('▶ Run Demo').length).toBe(1);
   });
 });

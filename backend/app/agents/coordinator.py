@@ -79,11 +79,20 @@ SYSTEM_PROMPT = (
 
 
 class _Case:
-    def __init__(self, atc_text: str, pilot_text: str, geometry: ScenarioGeometry, settings: Settings) -> None:
+    def __init__(
+        self,
+        atc_text: str,
+        pilot_text: str,
+        geometry: ScenarioGeometry,
+        settings: Settings,
+        *,
+        drop_fms_condition: bool = False,
+    ) -> None:
         self.atc_text = atc_text
         self.pilot_text = pilot_text
         self.geometry = geometry
         self.settings = settings
+        self.drop_fms_condition = drop_fms_condition
         self.atc: Clearance | None = None
         self.pilot: Clearance | None = None
         self.fms: FMSProgram | None = None
@@ -97,7 +106,9 @@ class _Case:
 def _ensure_matrix(case: _Case) -> ComparisonMatrix:
     assert case.atc is not None and case.pilot is not None
     if case.fms is None:
-        case.fms = fms_service.program_from_intent(case.pilot, source="pilot")
+        case.fms = fms_service.program_from_intent(
+            case.pilot, source="pilot", drop_condition=case.drop_fms_condition
+        )
     if case.matrix is None:
         case.matrix = comparison_service.build_matrix(case.atc, case.pilot, case.fms)
     return case.matrix
@@ -228,13 +239,17 @@ def _parse_live(
 ) -> None:
     case.atc = atc_intent.parse_atc(case.atc_text, case.settings, transport, strict_live=True)
     case.pilot = pilot_intent.parse_pilot(case.pilot_text, case.settings, transport, strict_live=True)
-    case.fms = fms_service.program_from_intent(case.pilot, source="pilot")
+    case.fms = fms_service.program_from_intent(
+        case.pilot, source="pilot", drop_condition=case.drop_fms_condition
+    )
 
 
 def _parse_fixture(case: _Case) -> None:
     case.atc = atc_intent.parse_atc(case.atc_text, case.settings, force_fixture=True)
     case.pilot = pilot_intent.parse_pilot(case.pilot_text, case.settings, force_fixture=True)
-    case.fms = fms_service.program_from_intent(case.pilot, source="pilot")
+    case.fms = fms_service.program_from_intent(
+        case.pilot, source="pilot", drop_condition=case.drop_fms_condition
+    )
 
 
 def _offline_coordinate(case: _Case, note: str | None) -> CoordinationResult:
@@ -263,8 +278,9 @@ def coordinate(
     *,
     use_live: bool = False,
     strict_live: bool = False,
+    drop_fms_condition: bool = False,
 ) -> CoordinationResult:
-    case = _Case(atc_text, pilot_text, geometry, settings)
+    case = _Case(atc_text, pilot_text, geometry, settings, drop_fms_condition=drop_fms_condition)
     live = use_live or strict_live
     if not live:
         _parse_fixture(case)

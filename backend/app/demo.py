@@ -11,7 +11,8 @@ from .services import audit
 from .services.model_client import JsonTransport
 
 CORRECTED_PILOT_TRANSCRIPT = (
-    "META 452, after passing MERIT, climb to flight level 230 and proceed direct PONCT."
+    "META 452, reduce speed to 250 knots now. "
+    "After MERIT, descend and maintain 15,000 feet."
 )
 
 _SESSION: dict[str, Any] = {}

@@ -20,15 +20,20 @@ from ..models import (
     SeparationMinima,
 )
 from . import fms as fms_service
+from .conflict import (
+    SpeedSchedule,
+    landing_schedule,
+    position_x_nm,
+    profile_altitude_ft,
+    speed_schedule,
+)
 
 SCAN_STEP_S = 5.0
 REFINE_STEP_S = 1.0
 REFINE_RADIUS_S = 5.0
 
-
-def _merit_time(geometry: ScenarioGeometry) -> float:
-    vx = geometry.own_speed_kt / 3600.0
-    return (geometry.merit_nm[0] - geometry.own_start_nm[0]) / vx
+# A sampled track: (altitude_ft, along-track x NM) per grid point.
+Track = list[tuple[float, float]]
 
 
 def _base_altitude(t_s: float, start_s: float, init_ft: float, target_ft: float, geo: ScenarioGeometry) -> float:
@@ -40,12 +45,11 @@ def _base_altitude(t_s: float, start_s: float, init_ft: float, target_ft: float,
 
 
 def _scan_profile(
-    altitudes: list[float],
+    track: Track,
     geometry: ScenarioGeometry,
     step_s: float,
 ) -> tuple[bool, float | None, float | None, float | None, SeparationMinima]:
     geo = geometry
-    vx = geo.own_speed_kt / 3600.0
     ivx = geo.intruder_vel_kt[0] / 3600.0
     ivy = geo.intruder_vel_kt[1] / 3600.0
     first_t: float | None = None
@@ -55,9 +59,8 @@ def _scan_profile(
     vert_at_min_lat = math.inf
     min_vert = math.inf
     lat_at_min_vert = math.inf
-    for index, alt in enumerate(altitudes):
+    for index, (alt, mx) in enumerate(track):
         t = index * step_s
-        mx = geo.own_start_nm[0] + vx * t
         ix = geo.intruder_start_nm[0] + ivx * t
         iy = geo.intruder_start_nm[1] + ivy * t
         lateral = math.hypot(mx - ix, geo.own_start_nm[1] - iy)
@@ -82,43 +85,83 @@ def _profile_for(
     program: FMSProgram,
     geometry: ScenarioGeometry,
     step_s: float = SCAN_STEP_S,
-) -> list[float]:
+) -> Track:
     geo = geometry
-    merit_t = _merit_time(geo)
     target = float(program.cleared_alt_ft) if program.cleared_alt_ft else geo.own_init_alt_ft
+    sched = landing_schedule(speed_schedule(program, geo), geo)
+    merit_t = sched.merit_t_s
     if kind == "corrected":
         start_s = merit_t if program.climb_start_fix else 0.0
     else:
         start_s = merit_t if program.climb_start_fix == "MERIT" else 0.0
-    altitudes: list[float] = []
+    track: Track = []
     t = 0.0
     while t <= geo.horizon_s:
-        altitudes.append(_base_altitude(t, start_s, geo.own_init_alt_ft, target, geo))
+        track.append(
+            (
+                profile_altitude_ft(
+                    t, merit_t, start_s, geo.own_init_alt_ft, target, geo
+                ),
+                position_x_nm(t, sched, geo),
+            )
+        )
         t += step_s
-    return altitudes
+    return track
 
 
-def _splice_profile(
-    uncorrected: list[float],
+def _interp_at(track: Track, tc: float, step_s: float) -> tuple[float, float]:
+    """Linear (alt, x) interpolation at tc; exact for piecewise-linear tracks."""
+    if tc <= 0:
+        return track[0]
+    pos = tc / step_s
+    lo = min(int(math.floor(pos)), len(track) - 1)
+    hi = min(lo + 1, len(track) - 1)
+    frac = min(max(pos - lo, 0.0), 1.0)
+    (a0, x0), (a1, x1) = track[lo], track[hi]
+    return (a0 + (a1 - a0) * frac, x0 + (x1 - x0) * frac)
+
+
+def _splice_track(
+    uncorrected: Track,
     tc: float,
     target: float,
-    merit_t: float,
+    sched_corr: SpeedSchedule,
     geo: ScenarioGeometry,
     step_s: float,
-) -> list[float]:
-    """Level-off maneuver: uncorrected until tc, hold level to MERIT, then to target."""
-    index_tc = min(int(round(tc / step_s)), len(uncorrected) - 1)
-    level_alt = uncorrected[index_tc]
-    profile: list[float] = []
-    for index, alt in enumerate(uncorrected):
+) -> Track:
+    """Level-off maneuver on the lagged position: FMS track until tc, then
+    the corrected schedule continued from there while holding level to the
+    trial's own MERIT crossing, then descending to target."""
+    level_alt, x_tc = _interp_at(uncorrected, tc, step_s)
+    base_tc = position_x_nm(tc, sched_corr, geo)
+
+    def x_at(t: float) -> float:
+        return x_tc + (position_x_nm(t, sched_corr, geo) - base_tc)
+
+    merit_x = geo.merit_nm[0]
+    if x_tc >= merit_x:
+        t_cross = tc
+    elif x_at(geo.horizon_s) < merit_x:
+        t_cross = math.inf
+    else:
+        lo, hi = tc, geo.horizon_s
+        for _ in range(60):
+            mid = (lo + hi) / 2.0
+            if x_at(mid) < merit_x:
+                lo = mid
+            else:
+                hi = mid
+        t_cross = (lo + hi) / 2.0
+    track: Track = []
+    for index, (alt, fx) in enumerate(uncorrected):
         t = index * step_s
         if t < tc:
-            profile.append(alt)
-        elif t < merit_t:
-            profile.append(level_alt)
+            track.append((alt, fx))
+        elif t <= t_cross:
+            track.append((level_alt, x_at(t)))
         else:
-            profile.append(_base_altitude(t, merit_t, level_alt, target, geo))
-    return profile
+            track.append((_base_altitude(t, t_cross, level_alt, target, geo), x_at(t)))
+    return track
 
 
 def _causal_chain(
@@ -127,9 +170,13 @@ def _causal_chain(
 ) -> list[CausalStep]:
     if conflict_t is None:
         return [CausalStep(step=1, stage="PREDICTION", detail="No trajectory conflict predicted.")]
-    first = findings[0].detail if findings else "clearance divergence"
+    first = findings[0] if findings else None
+    if first is not None and first.scope == "pilot_vs_fms":
+        mismatch = f"FMS entry diverges from readback: {first.detail}"
+    else:
+        mismatch = f"Pilot readback diverges from ATC: {first.detail if first else 'clearance divergence'}"
     return [
-        CausalStep(step=1, stage="MISMATCH", detail=f"Pilot readback diverges from ATC: {first}"),
+        CausalStep(step=1, stage="MISMATCH", detail=mismatch),
         CausalStep(step=2, stage="FMS", detail=f"FMS programmed from readback: {program.summary}."),
         CausalStep(
             step=3, stage="TRAJECTORY",
@@ -154,15 +201,15 @@ def calculate(
 ) -> SafetyWindow:
     corrected = fms_service.program_corrected(atc)
     target = float(corrected.cleared_alt_ft) if corrected.cleared_alt_ft else geometry.own_init_alt_ft
-    merit_t = _merit_time(geometry)
+    sched_corr = speed_schedule(corrected, geometry)
 
-    uncorrected_profile = _profile_for("uncorrected", fms_program, geometry)
+    uncorrected_track = _profile_for("uncorrected", fms_program, geometry)
     conflict, conflict_t, conflict_lat, conflict_vert, minima_none = _scan_profile(
-        uncorrected_profile, geometry, SCAN_STEP_S
+        uncorrected_track, geometry, SCAN_STEP_S
     )
 
-    corrected_profile = _profile_for("corrected", corrected, geometry)
-    _, _, _, _, minima_fixed = _scan_profile(corrected_profile, geometry, SCAN_STEP_S)
+    corrected_track = _profile_for("corrected", corrected, geometry)
+    _, _, _, _, minima_fixed = _scan_profile(corrected_track, geometry, SCAN_STEP_S)
 
     if not conflict or conflict_t is None:
         return SafetyWindow(
@@ -177,11 +224,10 @@ def calculate(
             basis="No conflict predicted; correction window is open over the horizon.",
         )
 
-    vx = geometry.own_speed_kt / 3600.0
     last_safe = 0.0
     tc = 0.0
     while tc <= conflict_t:
-        trial = _splice_profile(uncorrected_profile, tc, target, merit_t, geometry, SCAN_STEP_S)
+        trial = _splice_track(uncorrected_track, tc, target, sched_corr, geometry, SCAN_STEP_S)
         trial_conflict, _, _, _, _ = _scan_profile(trial, geometry, SCAN_STEP_S)
         if not trial_conflict:
             last_safe = tc
@@ -190,18 +236,18 @@ def calculate(
     fine_end = min(conflict_t, last_safe + REFINE_RADIUS_S)
     tc = fine_start
     while tc <= fine_end:
-        trial = _splice_profile(uncorrected_profile, tc, target, merit_t, geometry, SCAN_STEP_S)
+        trial = _splice_track(uncorrected_track, tc, target, sched_corr, geometry, SCAN_STEP_S)
         trial_conflict, _, _, _, _ = _scan_profile(trial, geometry, SCAN_STEP_S)
         if not trial_conflict:
             last_safe = tc
         tc += REFINE_STEP_S
     last_safe = round(last_safe, 1)
 
-    level_index = min(int(round(last_safe / SCAN_STEP_S)), len(uncorrected_profile) - 1)
-    grid_t = level_index * SCAN_STEP_S
+    level_index = min(int(round(last_safe / SCAN_STEP_S)), len(uncorrected_track) - 1)
+    level_alt, level_x = uncorrected_track[level_index]
     position = {
-        "x_nm": round(geometry.own_start_nm[0] + vx * grid_t, 2),
-        "alt_ft": round(uncorrected_profile[level_index], 1),
+        "x_nm": round(level_x, 2),
+        "alt_ft": round(level_alt, 1),
     }
     return SafetyWindow(
         conflict_time_s=conflict_t,
@@ -235,7 +281,8 @@ def simulate_correction_at(
     """Re-run the level-off correction applied at tc. Returns (conflict, minima)."""
     corrected = fms_service.program_corrected(atc)
     target = float(corrected.cleared_alt_ft) if corrected.cleared_alt_ft else geometry.own_init_alt_ft
-    uncorrected_profile = _profile_for("uncorrected", fms_program, geometry)
-    trial = _splice_profile(uncorrected_profile, tc, target, _merit_time(geometry), geometry, SCAN_STEP_S)
+    sched_corr = speed_schedule(corrected, geometry)
+    uncorrected_track = _profile_for("uncorrected", fms_program, geometry)
+    trial = _splice_track(uncorrected_track, tc, target, sched_corr, geometry, SCAN_STEP_S)
     conflict, _, _, _, minima = _scan_profile(trial, geometry, SCAN_STEP_S)
     return conflict, minima

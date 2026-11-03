@@ -45,7 +45,14 @@ app = FastAPI(title="ClearanceGuard AI", version="0.2.0-depth")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -103,7 +110,8 @@ async def transcribe(file: UploadFile = File(...), use_live: bool = False) -> Vo
 
 @app.post("/api/fms/program", response_model=FMSProgram)
 def program_fms(request: FMSRequest) -> FMSProgram:
-    return fms.program_from_intent(request.intent, source=request.source)
+    drop = get_scenario(request.scenario_id).fms_drops_condition if request.scenario_id else False
+    return fms.program_from_intent(request.intent, source=request.source, drop_condition=drop)
 
 
 @app.post("/api/compare", response_model=ComparisonMatrix)
@@ -182,7 +190,14 @@ def audit_verify() -> AuditVerify:
 
 @app.post("/api/coordinate", response_model=CoordinationResult)
 def coordinate_resolution(request: CoordinateRequest) -> CoordinationResult:
-    geometry = get_scenario(request.scenario_id).geometry if request.scenario_id else DEFAULT_GEOMETRY
+    scenario = get_scenario(request.scenario_id) if request.scenario_id else None
+    geometry = scenario.geometry if scenario else DEFAULT_GEOMETRY
+    drop = scenario.fms_drops_condition if scenario else False
     return coordinator.coordinate(
-        request.atc_text, request.pilot_text, load_settings(), geometry, use_live=request.use_live
+        request.atc_text,
+        request.pilot_text,
+        load_settings(),
+        geometry,
+        use_live=request.use_live,
+        drop_fms_condition=drop,
     )

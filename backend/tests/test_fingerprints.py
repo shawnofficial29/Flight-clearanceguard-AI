@@ -34,11 +34,11 @@ def test_evidence_and_confidence_excluded(offline_settings: Settings):
 def test_three_way_agreement(offline_settings: Settings):
     atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, offline_settings, force_fixture=True)
     pilot = pilot_intent.parse_pilot(DEMO_PILOT_TRANSCRIPT, offline_settings, force_fixture=True)
-    program = fms.program_from_intent(pilot, source="pilot")
+    program = fms.program_from_intent(pilot, source="pilot", drop_condition=True)
     before = fingerprints.fingerprints(atc, pilot, program)
     assert before.all_agree is False
-    assert before.atc != before.pilot
-    assert before.pilot == before.fms
+    assert before.atc == before.pilot
+    assert before.pilot != before.fms
     assert before.display_id == before.atc[:8] and len(before.display_id) == 8
 
     corrected_pilot = pilot_intent.parse_pilot(

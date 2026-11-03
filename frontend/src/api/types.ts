@@ -58,6 +58,7 @@ export interface FMSProgram {
   callsign: string | null;
   cleared_fl: number | null;
   cleared_alt_ft: number | null;
+  target_speed_kts: number | null;
   climb_start_fix: string | null;
   lateral_direct_to: string | null;
   route: string[];
@@ -100,9 +101,11 @@ export interface ProfilePoint {
   t_s: number;
   meta_x_nm: number;
   meta_ft: number;
+  meta_kt: number | null;
   intruder_x_nm: number;
   intruder_y_nm: number;
   intruder_ft: number;
+  intruder_kt: number;
 }
 
 export interface ConflictPrediction {
@@ -116,7 +119,12 @@ export interface ConflictPrediction {
   lateral_threshold_nm: number;
   vertical_threshold_ft: number;
   basis: string;
+  merit_time_s: number | null;
+  merit_vertical_gap_ft: number | null;
+  plan_merit_time_s: number | null;
+  intruder_merit_time_s: number | null;
   profile: ProfilePoint[];
+  plan_profile: ProfilePoint[] | null;
 }
 
 export interface Explanation {

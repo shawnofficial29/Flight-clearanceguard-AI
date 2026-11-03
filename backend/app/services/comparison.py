@@ -27,7 +27,21 @@ def _same(left: str | None, right: str | None) -> bool:
     return (left or "").strip().upper() == (right or "").strip().upper()
 
 
+def _speed_text(action: ClearanceAction) -> str | None:
+    """Terse speed cell ("250 kt after MERIT" / "250 kt now")."""
+    if action.action_type != "SPEED" or action.numeric_value is None:
+        return None
+    if action.trigger_type == "AFTER_WAYPOINT" and action.trigger_value:
+        return f"{action.numeric_value} kt after {action.trigger_value}"
+    if action.trigger_type == "IMMEDIATE":
+        return f"{action.numeric_value} kt now"
+    return None
+
+
 def _action_text(action: ClearanceAction) -> str:
+    speed = _speed_text(action)
+    if speed is not None:
+        return speed
     parts = [action.action_type]
     if action.target_fix:
         parts.append(action.target_fix)
@@ -133,6 +147,8 @@ def build_matrix(atc: Clearance, pilot: Clearance, fms: FMSProgram) -> Compariso
                 )
             )
             row_findings.append("PARTIAL_FMS_LOAD")
+        else:
+            row_findings += _compare_fms_load(pilot_action, fms, label, findings)
         fms_text = "Held for verification" if held else _predicted_execution(pilot_action, fms)
         status = "mismatch" if row_findings else "match"
         rows.append(
@@ -202,13 +218,11 @@ def build_matrix(atc: Clearance, pilot: Clearance, fms: FMSProgram) -> Compariso
     elif findings:
         overall = "mismatch"
 
-    missing = next(
-        (f for f in findings if f.category == "MISSING_CONDITION" and f.scope == "atc_vs_pilot"),
-        None,
-    )
+    missing = next((f for f in findings if f.category == "MISSING_CONDITION"), None)
     missing_phrase = None
     if missing:
-        action = next(a for a in atc.actions if a.action_type == missing.action)
+        source = pilot.actions if missing.scope == "pilot_vs_fms" else atc.actions
+        action = next(a for a in source if a.action_type == missing.action)
         missing_phrase = _trigger_phrase(action.trigger_type, action.trigger_value)
 
     return ComparisonMatrix(
@@ -297,7 +311,50 @@ def _compare_triggers(
     return ["CHANGED_CONDITION"]
 
 
+def _compare_fms_load(
+    pilot_action: ClearanceAction,
+    fms: FMSProgram,
+    label: str,
+    findings: list[Finding],
+) -> list[str]:
+    """Flag a conditional altitude/speed clearance the FMS executes immediately.
+
+    Only AFTER_WAYPOINT is modeled: the FMS has no AT_WAYPOINT/AT_TIME gate,
+    so those keep today's silent behavior.
+    """
+    if pilot_action.action_type == "SPEED":
+        loaded = next((a for a in fms.loaded_actions if a.action_type == "SPEED"), None)
+        if loaded is None or loaded.trigger_type != "IMMEDIATE":
+            return []
+    elif pilot_action.action_type in ("CLIMB", "DESCEND", "MAINTAIN"):
+        if fms.climb_start_fix is not None:
+            return []
+    else:
+        return []
+    if pilot_action.trigger_type != "AFTER_WAYPOINT":
+        return []
+    findings.append(
+        Finding(
+            category="MISSING_CONDITION",
+            scope="pilot_vs_fms",
+            action=label,
+            detail=f"{label} condition "
+            f"{_trigger_phrase(pilot_action.trigger_type, pilot_action.trigger_value)} "
+            "omitted in FMS entry.",
+        )
+    )
+    return ["MISSING_CONDITION"]
+
+
 def _predicted_execution(action: ClearanceAction, fms: FMSProgram) -> str:
+    if action.action_type == "SPEED":
+        value = fms.target_speed_kts if fms.target_speed_kts else action.numeric_value
+        if value is None:
+            return DASH
+        loaded = next((a for a in fms.loaded_actions if a.action_type == "SPEED"), None)
+        if loaded and loaded.trigger_type == "AFTER_WAYPOINT" and loaded.trigger_value:
+            return f"{value} kt after {loaded.trigger_value}"
+        return f"{value} kt now"
     if action.action_type in ("CLIMB", "DESCEND", "MAINTAIN") and fms.cleared_alt_ft:
         if fms.climb_start_fix:
             return f"Level, then change at {fms.climb_start_fix} to {fms.cleared_alt_ft:,} ft"

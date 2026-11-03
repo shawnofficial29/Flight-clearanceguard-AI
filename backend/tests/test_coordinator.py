@@ -13,11 +13,11 @@ from app.fixtures import (
     FIXTURE_ATC_PAYLOAD,
     FIXTURE_PILOT_PAYLOAD,
 )
-from app.scenarios import SCENARIOS
+from app.scenarios import ARRIVAL_GEOMETRY
 from app.services.model_client import MetaAPIError
 
-GEOMETRY = SCENARIOS["early-climb"].geometry
-VERIFIED_ID = "missing-condition-climb-0"
+GEOMETRY = ARRIVAL_GEOMETRY
+VERIFIED_ID = "missing-condition-descend-0"
 
 
 def _scripted(responses: list):
@@ -71,7 +71,12 @@ def _parses() -> list[dict]:
 
 def test_offline_coordination_recommends_verified(offline_settings: Settings):
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, offline_settings, GEOMETRY, use_live=False
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        offline_settings,
+        GEOMETRY,
+        use_live=False,
+        drop_fms_condition=True,
     )
     assert result.provenance == "fixture_fallback"
     assert result.overridden is False
@@ -122,7 +127,13 @@ def test_parallel_calls_round_trip_messages(live_settings: Settings):
     )
     transport, captured, _ = _scripted(_parses() + [first, _assistant(_submit("c9", VERIFIED_ID))])
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     assert [c.tool for c in result.tool_calls] == [
         "compare_intents",
@@ -148,7 +159,13 @@ def test_unknown_tool_returns_error_and_continues(live_settings: Settings):
         ]
     )
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     assert result.tool_calls[0].ok is False
     assert "Unknown tool" in result.tool_calls[0].summary
@@ -166,7 +183,13 @@ def test_submit_with_extra_key_rejected_then_recovered(live_settings: Settings):
         ]
     )
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     submits = [c for c in result.tool_calls if c.tool == "submit_verified_resolution"]
     assert [s.ok for s in submits] == [False, True]
@@ -177,7 +200,13 @@ def test_submit_with_extra_key_rejected_then_recovered(live_settings: Settings):
 def test_invented_recommendation_overridden_at_cap(live_settings: Settings):
     transport, _, calls = _scripted(_parses() + [_assistant(_submit("cx", "climb-to-fl999"))])
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     assert calls["n"] == 2 + coordinator.MAX_TURNS
     assert result.overridden is True
@@ -187,7 +216,13 @@ def test_invented_recommendation_overridden_at_cap(live_settings: Settings):
 def test_turn_cap_forces_deterministic_finish(live_settings: Settings):
     transport, _, calls = _scripted(_parses() + [_assistant(_call("c1", "predict_conflict", {}))])
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     assert calls["n"] == 2 + coordinator.MAX_TURNS
     assert "Turn cap" in (result.note or "")
@@ -222,7 +257,13 @@ def test_strict_cap_without_submit_surfaces(live_settings: Settings):
 def test_nonstrict_loop_error_falls_back_with_note(live_settings: Settings):
     transport, _, _ = _scripted(_parses() + [MetaAPIError("stub outage", status_code=500, body="err")])
     result = coordinator.coordinate(
-        DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT, live_settings, GEOMETRY, transport, use_live=True
+        DEMO_ATC_TRANSCRIPT,
+        DEMO_PILOT_TRANSCRIPT,
+        live_settings,
+        GEOMETRY,
+        transport,
+        use_live=True,
+        drop_fms_condition=True,
     )
     assert result.provenance == "fixture_fallback"
     assert "deterministic fallback" in (result.note or "").lower()

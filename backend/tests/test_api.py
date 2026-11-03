@@ -7,8 +7,11 @@ from fastapi.testclient import TestClient
 
 from app.fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT
 from app.main import app
+from app.scenarios import SCENARIOS
 
 client = TestClient(app)
+
+SYNC = SCENARIOS["altitude-sync"]
 
 
 def _demo_wav_bytes() -> bytes:
@@ -32,16 +35,17 @@ def test_health():
 
 def test_parse_routes():
     atc = client.post("/api/atc/parse", json={"transcript": DEMO_ATC_TRANSCRIPT}).json()
-    assert atc["actions"][0]["trigger_value"] == "MERIT"
+    descend = next(a for a in atc["actions"] if a["action_type"] == "DESCEND")
+    assert descend["trigger_value"] == "MERIT"
     pilot = client.post("/api/pilot/parse", json={"transcript": DEMO_PILOT_TRANSCRIPT}).json()
-    climb = next(a for a in pilot["actions"] if a["action_type"] == "CLIMB")
-    assert climb["trigger_type"] == "IMMEDIATE"
-    assert climb["trigger_value"] is None
+    descend = next(a for a in pilot["actions"] if a["action_type"] == "DESCEND")
+    assert descend["trigger_type"] == "AFTER_WAYPOINT"
+    assert descend["trigger_value"] == "MERIT"
 
 
 def test_scenarios_endpoint():
     body = client.get("/api/scenarios").json()
-    assert {s["id"] for s in body["scenarios"]} == {"early-climb", "altitude-value", "wrong-direct"}
+    assert [s["id"] for s in body["scenarios"]] == ["altitude-sync"]
 
 
 def test_voice_transcribe_fixture_file():
@@ -68,23 +72,29 @@ def test_demo_run_and_correct_endpoints():
 
 
 def _triple() -> dict:
-    atc = client.post("/api/atc/parse", json={"transcript": DEMO_ATC_TRANSCRIPT}).json()
-    pilot = client.post("/api/pilot/parse", json={"transcript": DEMO_PILOT_TRANSCRIPT}).json()
-    fms = client.post("/api/fms/program", json={"intent": pilot, "source": "pilot"}).json()
+    atc = client.post("/api/atc/parse", json={"transcript": SYNC.atc_text}).json()
+    pilot = client.post("/api/pilot/parse", json={"transcript": SYNC.pilot_text}).json()
+    fms = client.post(
+        "/api/fms/program",
+        json={"intent": pilot, "source": "pilot", "scenario_id": "altitude-sync"},
+    ).json()
     return {"atc": atc, "pilot": pilot, "fms": fms}
 
 
 def test_safety_window_endpoint():
-    window = client.post("/api/safety/window", json=_triple()).json()
-    assert window["conflict_time_s"] is not None
+    window = client.post(
+        "/api/safety/window", json={**_triple(), "scenario_id": "altitude-sync"}
+    ).json()
+    assert window["conflict_time_s"] == 165.0
+    assert window["last_safe_correction_s"] == 0.0
     assert window["last_safe_correction_s"] < window["conflict_time_s"]
     assert len(window["causal_chain"]) == 4
 
 
 def test_resolutions_endpoints():
-    triple = _triple()
+    triple = {**_triple(), "scenario_id": "altitude-sync"}
     candidates = client.post("/api/resolutions/enumerate", json=triple).json()
-    assert len(candidates) == 1
+    assert [c["id"] for c in candidates] == ["changed-value-maintain-0"]
     assert candidates[0]["verification"] == "VERIFIED"
     verification = client.post(
         "/api/resolutions/verify", json={**triple, "candidate_id": candidates[0]["id"]}
@@ -106,7 +116,11 @@ def test_fingerprints_and_audit_endpoints():
 def test_coordinate_endpoint_offline():
     result = client.post(
         "/api/coordinate",
-        json={"atc_text": DEMO_ATC_TRANSCRIPT, "pilot_text": DEMO_PILOT_TRANSCRIPT},
+        json={
+            "atc_text": SYNC.atc_text,
+            "pilot_text": SYNC.pilot_text,
+            "scenario_id": "altitude-sync",
+        },
     ).json()
-    assert result["recommended_candidate_id"] == "missing-condition-climb-0"
+    assert result["recommended_candidate_id"] == "changed-value-maintain-0"
     assert result["overridden"] is False

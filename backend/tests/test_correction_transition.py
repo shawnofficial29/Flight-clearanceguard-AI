@@ -38,13 +38,13 @@ def test_corrected_triple_agrees_everywhere(offline_settings: Settings, scenario
 
 def test_correction_response_carries_corrected_pilot():
     reset_session()
-    client.post("/api/demo/run", json={"use_live": False, "scenario_id": "early-climb"})
+    client.post("/api/demo/run", json={"use_live": False, "scenario_id": "altitude-sync"})
     body = client.post(
-        "/api/demo/correct", json={"use_live": False, "scenario_id": "early-climb"}
+        "/api/demo/correct", json={"use_live": False, "scenario_id": "altitude-sync"}
     ).json()
     pilot = body["corrected_pilot"]
     assert pilot["role"] == "pilot"
-    assert pilot["raw_text"] == SCENARIOS["early-climb"].corrected_text
+    assert pilot["raw_text"] == SCENARIOS["altitude-sync"].corrected_text
     assert body["comparison"]["overall"] == "agree"
     assert body["conflict"]["conflict"] is False
 

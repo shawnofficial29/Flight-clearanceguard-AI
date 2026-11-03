@@ -21,10 +21,6 @@ interface AgentPanelProps {
   active: boolean;
 }
 
-function shortHash(hash: string): string {
-  return `${hash.slice(0, 12)}…`;
-}
-
 function resolutionStatus(
   coordination: CoordinationResult,
   verification: VerificationResult | null,
@@ -137,23 +133,6 @@ export function AgentPanel(props: AgentPanelProps): React.JSX.Element {
           ) : null}
         </div>
       )}
-      <h3>Intent fingerprints</h3>
-      {fingerprints === null ? (
-        <p className="empty">{pending}</p>
-      ) : (
-        <dl className="facts">
-          <dt>ATC</dt>
-          <dd>{shortHash(fingerprints.atc)}</dd>
-          <dt>Pilot</dt>
-          <dd>{shortHash(fingerprints.pilot)}</dd>
-          <dt>FMS</dt>
-          <dd>{shortHash(fingerprints.fms)}</dd>
-          <dt>All agree</dt>
-          <dd>{fingerprints.all_agree ? 'Yes' : 'No'}</dd>
-          <dt>Display id</dt>
-          <dd>{fingerprints.display_id}</dd>
-        </dl>
-      )}
       <h3>Audit-chain validity</h3>
       {audit === null ? (
         <p className="empty">{pending}</p>
@@ -163,10 +142,6 @@ export function AgentPanel(props: AgentPanelProps): React.JSX.Element {
           <dd>{audit.valid ? 'Yes' : 'No'}</dd>
           <dt>Length</dt>
           <dd>{audit.length}</dd>
-          <dt>Head</dt>
-          <dd>{audit.head === null ? '—' : shortHash(audit.head)}</dd>
-          <dt>First bad seq</dt>
-          <dd>{audit.first_bad_seq === null ? '—' : audit.first_bad_seq}</dd>
         </dl>
       )}
       <h3>Recent audit events</h3>

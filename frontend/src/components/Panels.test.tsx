@@ -42,10 +42,10 @@ describe('SafetyPanel timing labels', () => {
       />,
     );
     expect(screen.getByText('Conflict predicted in').nextElementSibling?.textContent).toContain(
-      '215 seconds',
+      '205 seconds',
     );
     expect(screen.getByText('Last safe correction in').nextElementSibling?.textContent).toBe(
-      '197 seconds',
+      '187 seconds',
     );
     expect(
       screen.getByText('Safety margin between last correction and conflict').nextElementSibling
@@ -61,8 +61,8 @@ describe('SafetyPanel timing labels', () => {
         conflict={makeClearConflict()}
         safety={makeResolvedSafetyWindow()}
         candidates={makeCandidates()}
-        selectedId="missing-condition-climb-0"
-        appliedId="missing-condition-climb-0"
+        selectedId="missing-condition-descend-0"
+        appliedId="missing-condition-descend-0"
         verification={makeVerification()}
         verifying={false}
         correcting={false}
@@ -129,8 +129,8 @@ describe('AgentPanel presentation', () => {
         fingerprints={makeFingerprints(true)}
         audit={makeAuditVerify(14)}
         auditEvents={makeAuditEvents()}
-        selectedId="missing-condition-climb-0"
-        appliedId="missing-condition-climb-0"
+        selectedId="missing-condition-descend-0"
+        appliedId="missing-condition-descend-0"
         correction={makeCorrectionResult()}
         verification={makeVerification()}
         active
@@ -142,9 +142,9 @@ describe('AgentPanel presentation', () => {
     const scoped = within(block);
     const valueOf = (label: string): string | null =>
       scoped.getByText(label).nextElementSibling?.textContent ?? null;
-    expect(valueOf('Original coordinator recommendation')).toBe('missing-condition-climb-0');
-    expect(valueOf('Operator selection')).toBe('missing-condition-climb-0');
-    expect(valueOf('Applied by pilot')).toBe('missing-condition-climb-0');
+    expect(valueOf('Original coordinator recommendation')).toBe('missing-condition-descend-0');
+    expect(valueOf('Operator selection')).toBe('missing-condition-descend-0');
+    expect(valueOf('Applied by pilot')).toBe('missing-condition-descend-0');
     expect(valueOf('Resolution status')).toBe('VERIFIED AND APPLIED');
     expect(valueOf('Conflict status')).toBe('CLEARED');
     expect(valueOf('Intent fingerprints')).toBe('ALL AGREE');
@@ -152,32 +152,98 @@ describe('AgentPanel presentation', () => {
   });
 });
 
-describe('Header live gating', () => {
+describe('Header presentation', () => {
   const baseProps = {
     offline: false,
-    scenarios: makeScenarios(),
-    scenarioId: 'early-climb',
+    scenario: makeScenarios()[0],
     busy: false,
     hasDemo: false,
-    onScenarioChange: () => {},
     onUseLiveChange: () => {},
     onRunDemo: () => {},
     onCorrect: () => {},
     onReset: () => {},
   };
 
-  it('disables Live Meta with a message when the backend has no Meta API', () => {
-    render(<Header {...baseProps} health={makeHealth(false)} useLive={false} />);
-    expect(screen.getByText('Fixture Simulation')).not.toBeNull();
-    const live = screen.getByLabelText('Live Meta') as HTMLInputElement;
-    expect(live.disabled).toBe(true);
-    expect(live.checked).toBe(false);
-    expect(screen.getByText('Meta API unavailable in backend process.')).not.toBeNull();
+  it('shows the title, tagline, and the single scenario without a selector', () => {
+    const { container } = render(<Header {...baseProps} health={makeHealth(false)} useLive={false} />);
+    expect(screen.getByText('ClearanceGuard AI')).not.toBeNull();
+    expect(
+      screen.getByText('Catches clearance mismatches before the aircraft acts on them.'),
+    ).not.toBeNull();
+    expect(
+      screen.getByText('Altitude sync — pilot sets 22,000 ft, ATC cleared 23,000 ft'),
+    ).not.toBeNull();
+    expect(container.querySelector('select')).toBeNull();
   });
 
-  it('enables Live Meta when the backend reports it configured', () => {
+  it('shows the connection word next to the status dot', () => {
+    const { container, rerender } = render(
+      <Header {...baseProps} health={makeHealth(false)} useLive={false} />,
+    );
+    const statusWord = (): string | null | undefined =>
+      container.querySelector('.status-word')?.textContent;
+    expect(container.querySelector('.status-dot')).not.toBeNull();
+    expect(statusWord()).toBe('Simulation');
+    rerender(<Header {...baseProps} health={makeHealth(true)} useLive />);
+    expect(statusWord()).toBe('Live');
+    rerender(<Header {...baseProps} health={null} offline useLive={false} />);
+    expect(statusWord()).toBe('Offline');
+  });
+
+  it('keeps Meta API status out of the header', () => {
+    render(<Header {...baseProps} health={makeHealth(false)} useLive={false} />);
+    expect(screen.queryByText(/Meta API/)).toBeNull();
+    expect(screen.queryByText(/Backend connected/)).toBeNull();
+  });
+
+  it('disables the Live pill option when the backend has no Meta API', () => {
+    render(<Header {...baseProps} health={makeHealth(false)} useLive={false} />);
+    const live = screen.getByRole('button', { name: 'Live' }) as HTMLButtonElement;
+    expect(live.disabled).toBe(true);
+    expect(live.title).toContain('Meta API unavailable');
+    expect(
+      screen.getByRole('button', { name: 'Simulation' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('enables the Live pill option when the backend reports it configured', () => {
     render(<Header {...baseProps} health={makeHealth(true)} useLive={false} />);
-    expect((screen.getByLabelText('Live Meta') as HTMLInputElement).disabled).toBe(false);
-    expect(screen.queryByText('Meta API unavailable in backend process.')).toBeNull();
+    const live = screen.getByRole('button', { name: 'Live' }) as HTMLButtonElement;
+    expect(live.disabled).toBe(false);
+    expect(live.title).not.toContain('unavailable');
+  });
+
+  it('locks everything but Reset while the confirmation flow runs', () => {
+    render(
+      <Header
+        {...baseProps}
+        health={makeHealth(false)}
+        useLive={false}
+        hasDemo
+        flowActive
+      />,
+    );
+    expect(
+      (screen.getByRole('button', { name: '▶ Run Demo' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Pilot Correction' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('offers one primary run action with secondary correction and reset', () => {
+    render(<Header {...baseProps} health={makeHealth(true)} useLive={false} />);
+    const run = screen.getByRole('button', { name: '▶ Run Demo' });
+    expect(run.className).toContain('btn-primary');
+    expect(
+      screen.getByRole('button', { name: 'Pilot Correction' }).className,
+    ).toContain('btn-secondary');
+    expect(screen.getByRole('button', { name: 'Reset' }).className).toContain(
+      'btn-secondary',
+    );
   });
 });

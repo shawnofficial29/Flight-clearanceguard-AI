@@ -19,7 +19,7 @@ _SPEED = re.compile(r"(?:reduce\s+speed\s+to|speed)\s+(\d{2,3})\s*knots?", re.IG
 _MAINTAIN_SPEED = re.compile(r"\bmaintain\s+(\d{2,3})\s*knots?", re.IGNORECASE)
 _HEADING = re.compile(r"(?:fly\s+heading|heading|turn\s+(?:left|right)\s+heading)\s+(\d{3})", re.IGNORECASE)
 _HOLD = re.compile(r"\bhold\s+(?:at|over)\s+([A-Z][A-Z0-9]{2,5})", re.IGNORECASE)
-_AFTER = re.compile(r"after passing\s+([A-Z][A-Z0-9]{2,5})", re.IGNORECASE)
+_AFTER = re.compile(r"\bafter(?: passing)?\s+([A-Z][A-Z0-9]{2,5})", re.IGNORECASE)
 _AT_TIME = re.compile(r"\bat\s+(\d{1,2}:\d{2})\b")
 _AT_FIX = re.compile(r"\bat\s+([A-Z][A-Z0-9]{2,5})\b", re.IGNORECASE)
 
@@ -121,7 +121,10 @@ def _collect_actions(text: str) -> tuple[list[tuple[int, ClearanceAction]], list
                 confidence=_MATCH_CONF,
             ),
         )
-    if _MAINTAIN_ALT.search(text) and "knot" not in text.lower():
+    # "descend/climb and maintain <level>" is one vertical action: the maintain
+    # verb restates the target, so it must not become a second MAINTAIN action.
+    vertical_first = _CLIMB.search(text) is not None or _DESCEND.search(text) is not None
+    if _MAINTAIN_ALT.search(text) and "knot" not in text.lower() and not vertical_first:
         value, unit, span = _level_value(text)
         if value is not None:
             match = _MAINTAIN_ALT.search(text)
@@ -232,6 +235,20 @@ def _attach_triggers(
                 best[1].evidence = f"{best[1].evidence}, {span}"
         else:
             best[1].evidence = span
+    # A leading AFTER condition scopes over the following altitude/speed
+    # instructions ("After MERIT, descend ..., reduce speed ..."). Navigation
+    # (DIRECT_TO) stays immediate unless explicitly conditioned.
+    for tpos, ttype, tvalue, span in triggers:
+        if ttype != "AFTER_WAYPOINT":
+            continue
+        if any(pos <= tpos for pos, _ in actions):
+            continue
+        for _, action in actions:
+            if action.trigger_type != "IMMEDIATE" or action.action_type == "DIRECT_TO":
+                continue
+            action.trigger_type = ttype
+            action.trigger_value = tvalue
+            action.evidence = f"{span}, {action.evidence}" if action.evidence else span
 
 
 def parse_transcript(

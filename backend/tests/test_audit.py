@@ -15,7 +15,7 @@ def _clean_chain():
 
 
 def test_scenario_run_appends_linked_chain(offline_settings: Settings):
-    run_scenario(SCENARIOS["early-climb"], offline_settings, use_live=False)
+    run_scenario(SCENARIOS["altitude-sync"], offline_settings, use_live=False)
     events = audit.events()
     assert [e.type for e in events] == [
         "parse_atc",
@@ -55,7 +55,7 @@ def test_secrets_are_redacted():
 
 
 def test_no_thought_or_credential_fields():
-    run_scenario(SCENARIOS["altitude-value"], Settings(
+    run_scenario(SCENARIOS["altitude-sync"], Settings(
         meta_api_key=None,
         meta_model_api_url="https://stub.invalid/model",
         meta_voice_api_url="https://stub.invalid/voice",

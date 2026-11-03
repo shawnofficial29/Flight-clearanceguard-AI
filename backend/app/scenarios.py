@@ -1,4 +1,8 @@
-"""Scenario registry: three complete clearance arcs with resolution paths."""
+"""Scenario registry: the single ATC-vs-pilot altitude-sync arc.
+
+The product runs one scenario (a misheard altitude). The extra geometry
+constants below are shared engine fixtures for machinery tests, not scenarios.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +10,34 @@ from dataclasses import dataclass
 
 from .agents import atc_intent, explanation, pilot_intent
 from .config import Settings
-from .fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT
 from .models import BADGE_LABELS, CorrectionResult, DemoResult, ScenarioGeometry, ScenarioResult
 from .services import audit, comparison, conflict, fms
 from .services.model_client import JsonTransport
 
-DEFAULT_GEOMETRY = ScenarioGeometry()
 DESCENT_GEOMETRY = ScenarioGeometry(own_init_alt_ft=12000.0, intruder_alt_ft=10000.0)
+ARRIVAL_GEOMETRY = ScenarioGeometry(
+    own_init_alt_ft=23000.0,
+    intruder_alt_ft=15000.0,
+    # -100/9 NM puts the intruder's MERIT-latitude crossing at exactly t=160 s,
+    # well before META 452 arrives, keeping 5+ NM at the crossing either way.
+    intruder_start_nm=(18.0, -100.0 / 9.0),
+    intruder_vel_kt=(0.0, 250.0),
+    descend_rate_fpm=2100.0,
+    own_speed_kt=290.0,
+)
+SYNC_GEOMETRY = ScenarioGeometry(
+    own_init_alt_ft=23000.0,
+    intruder_alt_ft=22000.0,
+    intruder_start_nm=(18.0, -100.0 / 9.0),
+    intruder_vel_kt=(0.0, 250.0),
+    descend_rate_fpm=2100.0,
+    own_speed_kt=290.0,
+    # Landing tail past MERIT toward the airport: hold the cleared level
+    # through the encounter, then descend to 10,000 ft and slow to 175 kt.
+    landing_alt_ft=10000.0,
+    landing_speed_kt=175.0,
+    landing_decel_kt_s=0.25,
+)
 
 
 @dataclass(frozen=True)
@@ -26,45 +51,24 @@ class Scenario:
     expect_overall: str
     expect_categories: frozenset[str]
     expect_conflict: bool
+    fms_drops_condition: bool = False
 
 
 SCENARIOS: dict[str, Scenario] = {
-    "early-climb": Scenario(
-        id="early-climb",
-        title="Missing AFTER MERIT condition causes early-climb conflict",
-        atc_text=DEMO_ATC_TRANSCRIPT,
-        pilot_text=DEMO_PILOT_TRANSCRIPT,
-        corrected_text=DEMO_ATC_TRANSCRIPT,
-        geometry=DEFAULT_GEOMETRY,
-        expect_overall="mismatch",
-        expect_categories=frozenset({"MISSING_CONDITION"}),
-        expect_conflict=True,
-    ),
-    "altitude-value": Scenario(
-        id="altitude-value",
-        title="ATC assigns 11,000 ft while pilot/FMS uses 10,000 ft",
-        atc_text="META 452, descend to 11,000 feet.",
-        pilot_text="META 452, descend to 10,000 feet.",
-        corrected_text="META 452, descend to 11,000 feet.",
-        geometry=DESCENT_GEOMETRY,
+    "altitude-sync": Scenario(
+        id="altitude-sync",
+        title="Altitude sync — pilot sets 22,000 ft, ATC cleared 23,000 ft",
+        atc_text="META 452, maintain 23,000 feet.",
+        pilot_text="META 452, maintain 22,000 feet.",
+        corrected_text="META 452, maintain 23,000 feet.",
+        geometry=SYNC_GEOMETRY,
         expect_overall="mismatch",
         expect_categories=frozenset({"CHANGED_VALUE"}),
         expect_conflict=True,
     ),
-    "wrong-direct": Scenario(
-        id="wrong-direct",
-        title="Incorrect direct-to waypoint (MERIT instead of PONCT)",
-        atc_text="META 452, proceed direct PONCT.",
-        pilot_text="META 452, proceed direct MERIT.",
-        corrected_text="META 452, proceed direct PONCT.",
-        geometry=DEFAULT_GEOMETRY,
-        expect_overall="mismatch",
-        expect_categories=frozenset({"CHANGED_WAYPOINT"}),
-        expect_conflict=False,
-    ),
 }
 
-DEFAULT_SCENARIO_ID = "early-climb"
+DEFAULT_SCENARIO_ID = "altitude-sync"
 
 
 def get_scenario(scenario_id: str | None) -> Scenario:
@@ -101,7 +105,9 @@ def run_scenario(
         provenance=pilot.provenance,
         model=pilot.model,
     )
-    program = fms.program_from_intent(pilot, source="pilot")
+    program = fms.program_from_intent(
+        pilot, source="pilot", drop_condition=scenario.fms_drops_condition
+    )
     audit.append("fms_program", {"summary": program.summary, "route": program.route})
     matrix = comparison.build_matrix(atc, pilot, program)
     audit.append(
@@ -160,6 +166,9 @@ def run_scenario(
         force_fixture=force_fixture,
     )
     resolved = corrected_matrix.overall == "agree" and not corrected_prediction.conflict
+    # The ATC plan trajectory rides along for before/after comparison.
+    # The corrected profile flies the plan exactly.
+    prediction.plan_profile = corrected_prediction.profile
     corrected = CorrectionResult(
         corrected_pilot=corrected_pilot,
         fms=corrected_program,

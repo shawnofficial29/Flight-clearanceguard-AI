@@ -14,13 +14,18 @@ import type {
   VerificationResult,
 } from './api/types';
 import { Header } from './components/Header';
+import { ScenarioExplainer } from './components/ScenarioExplainer';
 import { DemoStepper } from './components/DemoStepper';
-import { AlertCard } from './components/AlertCard';
-import { IntentCompare } from './components/IntentCompare';
+import { ConversationStrip } from './components/ConversationStrip';
+import { SyncPanels } from './components/SyncPanels';
 import { EvidencePanel } from './components/EvidencePanel';
 import { RouteView } from './components/RouteView';
 import { AltitudeChart } from './components/AltitudeChart';
-import { SafetyPanel } from './components/SafetyPanel';
+import { ResultPanel } from './components/ResultPanel';
+import { SideView } from './components/SideView';
+import type { MapViewMode } from './components/SimMap';
+import { useSyncConfirmation } from './hooks/useSyncConfirmation';
+import { SYNC_SCENARIO_ID, syncAltitudes } from './utils/syncFlow';
 
 function tripleOf(demo: DemoResult): IntentTriple {
   return { atc: demo.atc, pilot: demo.pilot, fms: demo.fms };
@@ -60,7 +65,6 @@ export function App(): React.JSX.Element {
   const [health, setHealth] = useState<Health | null>(null);
   const [offline, setOffline] = useState(false);
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
-  const [scenarioId, setScenarioId] = useState('');
   const [useLive, setUseLive] = useState(false);
 
   const [demo, setDemo] = useState<DemoResult | null>(null);
@@ -79,6 +83,23 @@ export function App(): React.JSX.Element {
   const [correcting, setCorrecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Shared map playback time (display only); drives the altitude cursor.
+  const [mapTimeS, setMapTimeS] = useState(0);
+  // Shared before/after view (display only); the rail side view follows the map.
+  const [mapView, setMapView] = useState<MapViewMode>('before');
+
+  // Altitude-sync loop: ATC confirms first, then the pilot verifies. The
+  // sync autoplay drives the correction once the demo loads.
+  const syncAlt = syncAltitudes(demo);
+  const syncEnabled = demo !== null && syncAlt !== null;
+  const sync = useSyncConfirmation({
+    enabled: syncEnabled,
+    demo,
+    correction,
+    atcClearedFt: syncAlt?.atcClearedFt ?? null,
+    onSorted: () => void handleCorrect(),
+  });
+  const flowLock = demo !== null && correction === null;
 
   // /health is the source of truth: without a configured Meta API, Live Meta
   // cannot stay selected (it would silently fall back to fixtures).
@@ -93,7 +114,6 @@ export function App(): React.JSX.Element {
       const [nextHealth, nextScenarios] = await Promise.all([api.health(), api.scenarios()]);
       setHealth(nextHealth);
       setScenarios(nextScenarios.scenarios);
-      setScenarioId((current) => current || nextScenarios.scenarios[0]?.id || '');
       setOffline(false);
     } catch (unknown) {
       setOffline(true);
@@ -151,10 +171,10 @@ export function App(): React.JSX.Element {
     clearDetails();
     setDemo(null);
     try {
-      const next = await api.runDemo(useLive, scenarioId || null);
+      const next = await api.runDemo(useLive, SYNC_SCENARIO_ID);
       setDemo(next);
       setOffline(false);
-      await loadDetails(next, scenarioId);
+      await loadDetails(next, SYNC_SCENARIO_ID);
     } catch (unknown) {
       if (unknown instanceof ApiError && unknown.status === 0) setOffline(true);
       setError(unknown instanceof ApiError ? unknown.message : 'Demo run failed.');
@@ -168,7 +188,7 @@ export function App(): React.JSX.Element {
     setCorrecting(true);
     setError(null);
     try {
-      const next = await api.runCorrection(useLive, scenarioId || null);
+      const next = await api.runCorrection(useLive, SYNC_SCENARIO_ID);
       setCorrection(next);
       setAppliedId(selectedId ?? coordination?.recommended_candidate_id ?? null);
       setOffline(false);
@@ -178,7 +198,7 @@ export function App(): React.JSX.Element {
       // state would discard the live recommendation and tool-call trace.
       const triple = correctedTripleOf(demo, next);
       const [nextSafety, nextPrints, nextAudit, nextEvents] = await Promise.all([
-        api.safetyWindow(triple, scenarioId),
+        api.safetyWindow(triple, SYNC_SCENARIO_ID),
         api.fingerprints(triple),
         api.auditVerify(),
         api.auditEvents(),
@@ -201,7 +221,7 @@ export function App(): React.JSX.Element {
     setVerifying(true);
     setError(null);
     try {
-      const result = await api.verifyCandidate(tripleOf(demo), id, scenarioId || null);
+      const result = await api.verifyCandidate(tripleOf(demo), id, SYNC_SCENARIO_ID);
       setVerification(result);
     } catch (unknown) {
       setVerification(null);
@@ -230,24 +250,12 @@ export function App(): React.JSX.Element {
     }
   }
 
-  function handleScenarioChange(id: string): void {
-    // Never display the previous scenario's data under the new scenario name.
-    setScenarioId(id);
-    setDemo(null);
-    clearDetails();
-    setError(null);
-  }
-
   const busy = demoLoading || correcting;
   const hasCorrection = correction !== null;
   const activeConflict = correction?.conflict ?? demo?.conflict ?? null;
   const activeComparison = correction?.comparison ?? demo?.comparison ?? null;
 
-  const selectedScenario = scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
-  const scenarioLine =
-    selectedScenario === null
-      ? 'Select a scenario, then run the demo.'
-      : `Scenario ${selectedScenario.id} — ${selectedScenario.title}.`;
+  const scenario = scenarios[0] ?? null;
   const callsign = demo?.atc.callsign ?? demo?.fms.callsign ?? null;
 
   return (
@@ -258,18 +266,30 @@ export function App(): React.JSX.Element {
       <Header
         health={health}
         offline={offline}
-        scenarios={scenarios}
-        scenarioId={scenarioId}
+        scenario={scenario}
         useLive={useLive}
         busy={busy}
         hasDemo={demo !== null}
-        onScenarioChange={handleScenarioChange}
         onUseLiveChange={setUseLive}
         onRunDemo={() => void handleRunDemo()}
         onCorrect={() => void handleCorrect()}
         onReset={() => void handleReset()}
+        flowActive={flowLock}
       />
-      <DemoStepper demo={demo} correction={correction} />
+      <ScenarioExplainer />
+      <DemoStepper
+        demo={demo}
+        sync={
+          syncEnabled && syncAlt !== null && sync.stage !== 'idle'
+            ? {
+                stage: sync.stage,
+                atcClearedFt: syncAlt.atcClearedFt,
+                pilotSetFt: syncAlt.pilotSetFt,
+                confirmedFt: sync.atcChoiceFt,
+              }
+            : null
+        }
+      />
       <main id="main-content">
         {offline ? (
           <div className="banner banner-offline" role="alert">
@@ -289,77 +309,105 @@ export function App(): React.JSX.Element {
             </button>
           </div>
         ) : null}
-        {demoLoading ? <p className="meta-line">Running demo…</p> : null}
         {demo === null ? (
-          <div className="ops-grid">
-            <div className="workspace">
-              <div className="radar-wrap">
-                <RouteView
-                  conflict={null}
-                  corrected={false}
-                  callsign={null}
-                  fixes={[]}
-                  atcVia={null}
-                />
-                <div className="radar-prompt">
-                  <p>One omitted condition can change the aircraft trajectory.</p>
-                  <p>Run the demo to see ClearanceGuard catch it.</p>
+          demoLoading ? (
+            <div className="loading-state" role="status" aria-label="Loading demo">
+              <div className="skeleton skeleton-hero" />
+              <div className="ops-grid">
+                <div className="workspace">
+                  <div className="skeleton skeleton-map" />
+                </div>
+                <div className="rail">
+                  <div className="skeleton skeleton-card" />
+                  <div className="skeleton skeleton-card" />
                 </div>
               </div>
-              <section className="panel vert-compact" aria-label="Vertical profile">
-                <h2>Altitude versus time (ft)</h2>
-                <p className="empty">Altitude and time appear here once the demo runs.</p>
-              </section>
             </div>
-            <div className="rail">
-              <section className="panel">
-                <h2>Ready to run</h2>
-                <p>{scenarioLine}</p>
-                <p className="meta-line">Press Run Demo in the header to start.</p>
-              </section>
+          ) : (
+            <div className="ops-grid">
+              <div className="workspace">
+                <div className="radar-wrap">
+                  <RouteView
+                    conflict={null}
+                    history={null}
+                    corrected={false}
+                    callsign={null}
+                    fixes={[]}
+                    atcVia={null}
+                    onPlaybackTime={setMapTimeS}
+                  />
+                  <div className="radar-prompt">
+                    <p>One misheard number can put the aircraft at the wrong altitude.</p>
+                    <p>Run the demo to see ClearanceGuard catch it.</p>
+                  </div>
+                </div>
+                <section className="panel vert-compact" aria-label="Vertical profile">
+                  <h2>Altitude versus time (ft)</h2>
+                  <p className="empty">Altitude and time appear here once the demo runs.</p>
+                </section>
+              </div>
+              <div className="rail">
+                <section className="panel">
+                  <h2>Ready to run</h2>
+                  <p>One scenario is loaded.</p>
+                  <p className="meta-line">Press ▶ Run Demo in the header to start.</p>
+                </section>
+              </div>
             </div>
-          </div>
+          )
         ) : (
-          <div className="ops-grid">
-            <div className="workspace">
-              <RouteView
-                conflict={correction?.conflict ?? demo.conflict}
-                corrected={hasCorrection}
-                callsign={callsign}
-                fixes={fixesOf(demo)}
-                atcVia={atcViaOf(demo)}
-              />
-              <div className="vert-compact">
+          <>
+            {syncEnabled && syncAlt !== null && sync.stage !== 'idle' ? (
+              <>
+                <ConversationStrip altitudes={syncAlt} sorted={sync.stage === 'done'} />
+                <SyncPanels
+                  altitudes={syncAlt}
+                  stage={sync.stage}
+                  atcChoiceFt={sync.atcChoiceFt}
+                  correcting={correcting}
+                  onConfirmAtc={sync.confirmAtc}
+                  onVerifyPilot={sync.verifyPilot}
+                />
+              </>
+            ) : null}
+            <div className="ops-grid">
+              <div className="workspace">
+                <RouteView
+                  conflict={correction?.conflict ?? demo.conflict}
+                  history={hasCorrection ? demo.conflict : null}
+                  corrected={hasCorrection}
+                  callsign={callsign}
+                  fixes={fixesOf(demo)}
+                  atcVia={atcViaOf(demo)}
+                  onPlaybackTime={setMapTimeS}
+                  onMapViewChange={setMapView}
+                />
+              </div>
+              <div className="rail">
+                <ResultPanel
+                  conflict={correction?.conflict ?? demo.conflict}
+                  comparison={correction?.comparison ?? demo.comparison}
+                  correction={correction}
+                  safety={safety}
+                  correcting={correcting}
+                  onConfirmCorrection={() => void handleCorrect()}
+                  flowActive={flowLock}
+                />
+                <SideView
+                  before={demo.conflict}
+                  after={correction?.conflict ?? null}
+                  view={mapView}
+                  timeS={mapTimeS}
+                />
                 <AltitudeChart
                   conflict={correction?.conflict ?? demo.conflict}
                   reference={hasCorrection ? demo.conflict : null}
                   safety={safety}
+                  timeS={mapTimeS}
                 />
               </div>
             </div>
-            <div className="rail">
-              <AlertCard
-                demo={demo}
-                correction={correction}
-                comparison={correction?.comparison ?? demo.comparison}
-                conflict={correction?.conflict ?? demo.conflict}
-              />
-              <IntentCompare comparison={correction?.comparison ?? demo.comparison} />
-              <SafetyPanel
-                conflict={correction?.conflict ?? demo.conflict}
-                safety={safety}
-                candidates={candidates}
-                selectedId={selectedId}
-                appliedId={appliedId}
-                verification={verification}
-                verifying={verifying}
-                correcting={correcting}
-                correction={correction}
-                onSelectCandidate={(id) => void handleSelectCandidate(id)}
-                onConfirmCorrection={() => void handleCorrect()}
-              />
-            </div>
-          </div>
+          </>
         )}
         <EvidencePanel
           atc={demo?.atc ?? null}
@@ -381,6 +429,9 @@ export function App(): React.JSX.Element {
           useLive={useLive}
           voiceConfigured={health?.voice_configured ?? null}
           offline={offline}
+          health={health}
+          onSelectCandidate={(id) => void handleSelectCandidate(id)}
+          verifying={verifying}
         />
       </main>
     </div>

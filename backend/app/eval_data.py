@@ -92,6 +92,29 @@ PAIRS: list[dict] = [
         "expected_overall": "agree",
         "expected_categories": set(),
     },
+    {
+        "id": "agree-descend-arrival",
+        "atc": "META 452, reduce speed to 250 knots now. "
+        "After MERIT, descend and maintain 15,000 feet.",
+        "pilot": "META 452, reduce speed to 250 knots now. "
+        "After MERIT, descend and maintain 15,000 feet.",
+        "atc_truth": (
+            "META 452",
+            [
+                ("SPEED", None, 250, "KTS", "IMMEDIATE", None),
+                ("DESCEND", None, 15000, "FT", "AFTER_WAYPOINT", "MERIT"),
+            ],
+        ),
+        "pilot_truth": (
+            "META 452",
+            [
+                ("SPEED", None, 250, "KTS", "IMMEDIATE", None),
+                ("DESCEND", None, 15000, "FT", "AFTER_WAYPOINT", "MERIT"),
+            ],
+        ),
+        "expected_overall": "agree",
+        "expected_categories": set(),
+    },
     # Dropped conditions (6).
     {
         "id": "missing-condition-climb",

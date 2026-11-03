@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.agents import atc_intent, coordinator, pilot_intent  # noqa: E402
 from app.config import Settings, live_model_available, load_settings  # noqa: E402
 from app.fixtures import DEMO_ATC_TRANSCRIPT, DEMO_PILOT_TRANSCRIPT  # noqa: E402
-from app.scenarios import SCENARIOS  # noqa: E402
+from app.scenarios import ARRIVAL_GEOMETRY  # noqa: E402
 from app.services import comparison, fms, resolutions  # noqa: E402
 from app.services.model_client import MetaAPIError, ModelNotConfiguredError  # noqa: E402
 
@@ -39,7 +39,7 @@ def main() -> int:
     if not live_model_available(settings):
         print("COORD-SMOKE-ERROR: no API key. Set MODEL_API_KEY in .env.")
         return 2
-    geometry = SCENARIOS["early-climb"].geometry
+    geometry = ARRIVAL_GEOMETRY
     try:
         result = coordinator.coordinate(
             DEMO_ATC_TRANSCRIPT,
@@ -47,6 +47,7 @@ def main() -> int:
             settings,
             geometry,
             strict_live=True,
+            drop_fms_condition=True,
         )
     except ModelNotConfiguredError:
         print("COORD-SMOKE-ERROR: no API key. Set MODEL_API_KEY in .env.")
@@ -75,7 +76,7 @@ def main() -> int:
     # Deterministic cross-check: the final id must be a VERIFIED candidate.
     atc = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, settings, strict_live=True)
     pilot = pilot_intent.parse_pilot(DEMO_PILOT_TRANSCRIPT, settings, strict_live=True)
-    program = fms.program_from_intent(pilot, source="pilot")
+    program = fms.program_from_intent(pilot, source="pilot", drop_condition=True)
     matrix = comparison.build_matrix(atc, pilot, program)
     deterministic = {
         c.id: c for c in resolutions.enumerate_candidates(atc, pilot, matrix, geometry)
