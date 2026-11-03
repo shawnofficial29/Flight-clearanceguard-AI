@@ -42,6 +42,7 @@ export function usePlayback(
   enabled: boolean,
   resetKey: string,
   autoPlay: boolean,
+  rate: number = PLAYBACK_RATE,
 ): Playback {
   const reducedMotion = useReducedMotion();
   const tMax = profile.length === 0 ? 0 : profile[profile.length - 1].t_s;
@@ -53,8 +54,8 @@ export function usePlayback(
   const lastRef = useRef(0);
   const timeRef = useRef(0);
   const pauseArmedRef = useRef(true);
-  const liveRef = useRef({ pauseAt, tMax, enabled });
-  liveRef.current = { pauseAt, tMax, enabled };
+  const liveRef = useRef({ pauseAt, tMax, enabled, rate });
+  liveRef.current = { pauseAt, tMax, enabled, rate };
 
   const stopLoop = useCallback(() => {
     if (frameRef.current !== null) {
@@ -80,7 +81,7 @@ export function usePlayback(
       const next = advanceTime(
         timeRef.current,
         dt,
-        PLAYBACK_RATE,
+        live.rate,
         live.pauseAt,
         pauseArmedRef.current,
         live.tMax,

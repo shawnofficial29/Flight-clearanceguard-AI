@@ -1,0 +1,437 @@
+/* PILOT'S VIEW cockpit tablet. All classes here are new (pv- prefix);
+ * nothing in the existing stylesheet is touched. Gray avionics palette
+ * like a cockpit display; amber/green keep their caution/ok meaning. */
+
+.pv-device {
+  background: #0f1012;
+  border: 1px solid #000;
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  container-type: inline-size;
+  user-select: none;
+}
+
+.pv-screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #16171a;
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 10px;
+  color: #e8eaed;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.pv-glare {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%);
+  pointer-events: none;
+}
+
+.pv-num {
+  font-family: ui-monospace, "Cascadia Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-status {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  border-bottom: 1px solid #33363b;
+  padding-bottom: 8px;
+}
+
+.pv-brand {
+  color: #9aa0a8;
+  font-weight: 600;
+}
+
+.pv-callsign {
+  color: #fff;
+  font-weight: 700;
+}
+
+.pv-clock {
+  margin-left: auto;
+  color: #9aa0a8;
+}
+
+.pv-simtag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ffd489;
+  border: 1px solid #6b5320;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.pv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@container (max-width: 560px) {
+  .pv-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pv-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pv-card {
+  background: #1f2125;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.pv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.pv-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #9aa0a8;
+}
+
+.pv-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.pv-cyan {
+  color: #e8eaed;
+}
+
+/* Clearance card: the main readout, biggest text on the screen. */
+
+.pv-clear {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pv-clear[data-tone="cyan"] {
+  color: #e8eaed;
+  border-color: #5f6368;
+}
+
+.pv-clear[data-tone="alert"] {
+  color: #ffb020;
+  border-color: #6b4a15;
+}
+
+.pv-clear[data-tone="danger"] {
+  color: #ff6b6b;
+  border-color: #7a2a22;
+}
+
+.pv-clear[data-tone="ok"] {
+  color: #3ddc84;
+  border-color: #14532d;
+}
+
+.pv-line {
+  overflow-wrap: anywhere;
+}
+
+.pv-big {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.pv-alert-title {
+  letter-spacing: 0.04em;
+}
+
+.pv-alert-sub {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.pv-pulse {
+  animation: pv-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pv-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.pv-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pv-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid #3c4043;
+  border-top-color: #e8eaed;
+  animation: pv-spin 0.9s linear infinite;
+}
+
+@keyframes pv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pv-roll {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.pv-verifybtn {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #16171a;
+  background: #e8eaed;
+  border: 1px solid #e8eaed;
+  border-radius: 6px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.pv-verifybtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pv-press {
+  animation: pv-press 0.6s ease-out 1;
+}
+
+@keyframes pv-press {
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(0.93);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Real demo map pane: sim-wrap inherits the demo map look; the height is
+ * sized for the tablet split pane instead of the full demo column. */
+
+.pv-mapwrap {
+  min-width: 0;
+  align-self: start;
+}
+
+.pv-mapwrap.sim-wrap .leaflet-container {
+  height: clamp(280px, 42dvh, 520px);
+  min-height: 280px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-pulse,
+  .pv-spinner,
+  .pv-press {
+    animation: none;
+  }
+}
+
+/* Notification banner */
+
+.pv-banner {
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #1f2125;
+}
+
+.pv-banner[data-tone="dim"] {
+  color: #9aa0a8;
+  font-weight: 600;
+}
+
+.pv-banner[data-tone="cyan"] {
+  color: #e8eaed;
+  border-color: #5f6368;
+}
+
+.pv-banner[data-tone="alert"] {
+  color: #ffb020;
+  border-color: #6b4a15;
+}
+
+.pv-banner[data-tone="danger"] {
+  color: #ff6b6b;
+  border-color: #7a2a22;
+}
+
+.pv-banner[data-tone="ok"] {
+  color: #3ddc84;
+  border-color: #14532d;
+}
+
+/* Nav rail + content */
+
+.pv-main {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pv-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-top: 6px;
+  color: #5f6368;
+}
+
+.pv-navicon {
+  display: block;
+}
+
+/* ATC choice buttons */
+
+.pv-choices {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pv-choice {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8eaed;
+  background: #2b2e33;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.pv-choice-primary {
+  color: #16171a;
+  background: #e8eaed;
+  border-color: #e8eaed;
+}
+
+/* ATC voice example */
+
+.pv-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pv-audio audio {
+  display: none;
+}
+
+.pv-listen {
+  font-size: 12px;
+  font-weight: 700;
+  color: #16171a;
+  background: #e8eaed;
+  border: 1px solid #e8eaed;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.pv-transcript {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f3f4;
+}
+
+.pv-audiohint {
+  font-size: 11px;
+  color: #9aa0a8;
+}
+
+/* Transport */
+
+.pv-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #1f2125;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.pv-tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: #e8eaed;
+  background: #2b2e33;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pv-scrub {
+  flex: 1 1 120px;
+  min-width: 80px;
+  accent-color: #e8eaed;
+}
+
+.pv-readout {
+  font-size: 11px;
+  color: #9aa0a8;
+  white-space: nowrap;
+}
+
+.pv-tstatus {
+  font-size: 11px;
+  color: #ffb020;
+  white-space: nowrap;
+}
+
+.pv-device button:focus-visible,
+.pv-device input:focus-visible {
+  outline: 2px solid #e8eaed;
+  outline-offset: 2px;
+}

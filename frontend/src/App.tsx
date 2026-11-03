@@ -23,6 +23,7 @@ import { RouteView } from './components/RouteView';
 import { AltitudeChart } from './components/AltitudeChart';
 import { ResultPanel } from './components/ResultPanel';
 import { SideView } from './components/SideView';
+import { PilotPerspectivePage } from './components/PilotPerspectivePage';
 import type { MapViewMode } from './components/SimMap';
 import { useSyncConfirmation } from './hooks/useSyncConfirmation';
 import { SYNC_SCENARIO_ID, syncAltitudes } from './utils/syncFlow';
@@ -87,6 +88,8 @@ export function App(): React.JSX.Element {
   const [mapTimeS, setMapTimeS] = useState(0);
   // Shared before/after view (display only); the rail side view follows the map.
   const [mapView, setMapView] = useState<MapViewMode>('before');
+  // Demo page vs Pilot's Perspective split page.
+  const [page, setPage] = useState<'demo' | 'pilot'>('demo');
 
   // Altitude-sync loop: ATC confirms first, then the pilot verifies. The
   // sync autoplay drives the correction once the demo loads.
@@ -98,6 +101,7 @@ export function App(): React.JSX.Element {
     correction,
     atcClearedFt: syncAlt?.atcClearedFt ?? null,
     onSorted: () => void handleCorrect(),
+    autoPlay: page === 'demo',
   });
   const flowLock = demo !== null && correction === null;
 
@@ -263,6 +267,35 @@ export function App(): React.JSX.Element {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
+      {page === 'pilot' ? (
+        <PilotPerspectivePage
+          demo={demo}
+          correction={correction}
+          callsign={callsign}
+          timeS={mapTimeS}
+          syncStage={sync.stage}
+          atcChoiceFt={sync.atcChoiceFt}
+          syncAlt={syncAlt}
+          correcting={correcting}
+          fixes={fixesOf(demo)}
+          atcVia={atcViaOf(demo)}
+          onConfirmAtc={sync.confirmAtc}
+          onVerifyPilot={sync.verifyPilot}
+          onTimeChange={setMapTimeS}
+          onBack={() => setPage('demo')}
+          onReplay={() => void handleRunDemo()}
+        />
+      ) : (
+        <>
+          <div className="pilot-nav-row">
+            <button
+              type="button"
+              className="pilot-nav-button"
+              onClick={() => setPage('pilot')}
+            >
+              Pilot's Perspective
+            </button>
+          </div>
       <Header
         health={health}
         offline={offline}
@@ -434,6 +467,8 @@ export function App(): React.JSX.Element {
           verifying={verifying}
         />
       </main>
+        </>
+      )}
     </div>
   );
 }

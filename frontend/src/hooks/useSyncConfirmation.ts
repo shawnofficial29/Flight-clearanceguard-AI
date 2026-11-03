@@ -27,8 +27,11 @@ export function useSyncConfirmation(args: {
   atcClearedFt: number | null;
   onSorted: () => void;
   stepMs?: number;
+  /** Demo autoplay switch; false forces both steps to wait for a manual tap. */
+  autoPlay?: boolean;
 }): SyncConfirmation {
   const { enabled, demo, correction, atcClearedFt, onSorted, stepMs = SYNC_STEP_MS } = args;
+  const autoPlay = args.autoPlay ?? true;
   const [atcChoiceFt, setAtcChoiceFt] = useState<number | null>(null);
   const [pilotVerified, setPilotVerified] = useState(false);
   const [auto, setAuto] = useState(true);
@@ -83,21 +86,21 @@ export function useSyncConfirmation(args: {
   // Demo autoplay: ATC confirms the cleared value, then the pilot verifies.
   // The alternate ATC choice is never auto-played.
   useEffect(() => {
-    if (!enabled || !auto || demo === null || correction !== null) return;
+    if (!enabled || !auto || !autoPlay || demo === null || correction !== null) return;
     if (atcChoiceFt !== null || pilotVerified || atcClearedFt === null) return;
     const timer = setTimeout(() => setAtcChoiceFt(atcClearedFt), stepMs);
     return () => clearTimeout(timer);
-  }, [enabled, auto, demo, correction, atcChoiceFt, pilotVerified, atcClearedFt, stepMs]);
+  }, [enabled, auto, autoPlay, demo, correction, atcChoiceFt, pilotVerified, atcClearedFt, stepMs]);
 
   useEffect(() => {
-    if (!enabled || !auto || atcChoiceFt === null || pilotVerified || correction !== null) return;
+    if (!enabled || !auto || !autoPlay || atcChoiceFt === null || pilotVerified || correction !== null) return;
     if (atcChoiceFt !== atcClearedFt) return;
     const timer = setTimeout(() => {
       setPilotVerified(true);
       onSortedRef.current();
     }, stepMs);
     return () => clearTimeout(timer);
-  }, [enabled, auto, atcChoiceFt, atcClearedFt, pilotVerified, correction, stepMs]);
+  }, [enabled, auto, autoPlay, atcChoiceFt, atcClearedFt, pilotVerified, correction, stepMs]);
 
   return { stage, atcChoiceFt, pilotVerified, auto, confirmAtc, verifyPilot, reset };
 }
