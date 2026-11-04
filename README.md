@@ -12,6 +12,16 @@ call. ClearanceGuard AI listens to every clearance, compares the ATC
 instruction, the pilot readback, and the FMS entry, and the instant they
 disagree it raises the flag and walks the crew to a verified fix.
 
+## What it does
+
+A safety net for misheard clearances: hear everything, check three ways,
+fly only verified fixes.
+
+- Catches misheard ATC clearances before they become deviations
+- Compares ATC, pilot readback, and FMS — flags mismatches instantly
+- Verifies the fix, then walks ATC and pilot through confirmation
+- Runs live on a cockpit tablet, voice included
+
 ## The demo in 60 seconds
 
 ATC clears META 452 to **maintain 23,000 feet** — but the pilot mishears it,
@@ -50,13 +60,13 @@ and builds the same safety check at the new altitude automatically.
 
 ## Screenshots
 
-![Cockpit tablet showing ClearanceGuard](docs/screenshots/cockpit-tablet.png)
+![Demo: mismatch caught, ATC confirmed, awaiting pilot verify](docs/screenshots/demo-mismatch.png)
 
-<!--
-Add captures to docs/screenshots/ and uncomment:
+![Demo: clearance synchronized](docs/screenshots/demo-synced.png)
+
 ![Pilot tablet: clearance synchronized](docs/screenshots/pilot-synced.png)
-![Demo: mismatch caught](docs/screenshots/demo-mismatch.png)
--->
+
+![Cockpit tablet showing ClearanceGuard](docs/screenshots/cockpit-tablet.png)
 
 ## Quickstart
 
