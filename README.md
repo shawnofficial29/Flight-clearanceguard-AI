@@ -2,7 +2,7 @@
 
 Catches misheard ATC clearances before they become deviations.
 
-> **Demo video:** _link coming — 3-minute walkthrough (demo + pilot's perspective)._
+> **Demo video:** [3-minute walkthrough — demo + pilot's perspective](https://youtu.be/6DkMgs8Sa14)
 
 ![Where it lives: the cockpit tablet](frontend/public/cockpit-wide.webp)
 
@@ -48,13 +48,14 @@ and builds the same safety check at the new altitude automatically.
 - **Auditability**: SHA-256 intent fingerprints plus a hash-linked audit
   chain — every decision replayable.
 
-<!--
 ## Screenshots
 
+![Cockpit tablet showing ClearanceGuard](docs/screenshots/cockpit-tablet.png)
+
+<!--
 Add captures to docs/screenshots/ and uncomment:
+![Pilot tablet: clearance synchronized](docs/screenshots/pilot-synced.png)
 ![Demo: mismatch caught](docs/screenshots/demo-mismatch.png)
-![Demo: clearance synchronized](docs/screenshots/demo-synced.png)
-![Pilot tablet with live map](docs/screenshots/pilot-tablet.png)
 -->
 
 ## Quickstart
