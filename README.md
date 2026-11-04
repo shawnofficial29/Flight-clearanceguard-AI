@@ -4,7 +4,7 @@ Catches misheard ATC clearances before they become deviations.
 
 > **Demo video:** [3-minute walkthrough — demo + pilot's perspective](https://youtu.be/6DkMgs8Sa14)
 
-![Where it lives: the cockpit tablet](frontend/public/cockpit-wide.webp)
+![ClearanceGuard on the pilot's cockpit tablet](frontend/public/cockpit-tablet-closeup.png)
 
 About 1 in 4 accidents involves pilot-ATC miscommunication (ICAO/FAA) — and
 the deadliest crash in history, Tenerife, started with a misunderstood radio
