@@ -115,6 +115,8 @@ export interface PilotViewProps {
   voiceError: string | null;
   onUploadAudio: (file: File) => void;
   onApplyTranscript: (text: string) => void;
+  /** Autoplay on mount; off after Start so the fresh run waits at T+0. */
+  autoPlay?: boolean;
 }
 
 /**
@@ -143,6 +145,7 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
     voiceError,
     onUploadAudio,
     onApplyTranscript,
+    autoPlay = true,
   } = props;
   const corrected = correction !== null;
 
@@ -172,11 +175,12 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
     playback.seek(mountT);
   }, [mountT, playback.seek]);
 
-  // The aircraft moves continuously from the moment the page opens.
+  // The aircraft moves continuously from the moment the page opens, unless
+  // the run just started from the top-right button (it waits at T+0).
   useEffect(() => {
-    if (typeof requestAnimationFrame === 'undefined') return;
+    if (!autoPlay || typeof requestAnimationFrame === 'undefined') return;
     playback.play();
-  }, [playback.play]);
+  }, [autoPlay, playback.play]);
 
   useEffect(() => {
     onTimeChange(playback.timeS);
@@ -508,6 +512,7 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
                 timeS={playback.timeS}
                 fitKey={resetKey}
                 view={corrected ? 'after' : 'before'}
+                fitPadding={[16, 16]}
               />
             </div>
           </div>

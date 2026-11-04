@@ -30,6 +30,8 @@ export interface PilotPerspectivePageProps {
   onApplyTranscript: (text: string) => void;
   onBack: () => void;
   onReplay: () => void;
+  /** True once the pilot flow has started (top-right shows Replay). */
+  started: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
     onApplyTranscript,
     onBack,
     onReplay,
+    started,
   } = props;
   return (
     <div className="pp-page">
@@ -71,7 +74,7 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
         </button>
         <h1 className="pp-title">PILOT&apos;S PERSPECTIVE</h1>
         <button type="button" className="pp-replay" onClick={onReplay}>
-          {demo === null ? 'Start.' : '↻ Replay'}
+          {started ? '↻ Replay' : 'Start.'}
         </button>
       </header>
       <div className="pp-split">
@@ -96,6 +99,7 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
               voiceError={voiceError}
               onUploadAudio={onUploadAudio}
               onApplyTranscript={onApplyTranscript}
+              autoPlay={!started}
             />
           </div>
         </div>
@@ -107,7 +111,7 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
             <CockpitPhoto src={PHOTO_LEFT_SRC} alt="Pilot tablet showing ClearanceGuard" />
             <CockpitPhoto src={PHOTO_RIGHT_SRC} alt="Wide cockpit view with pilot tablets" />
           </div>
-          <div className="pp-caption">A clearance card, ClearanceGuard AI, on the tablet of the pilot in the cockpit</div>
+          <div className="pp-caption">ClearanceGuard AI, on the tablet of the pilot in the cockpit</div>
         </div>
       </div>
     </div>

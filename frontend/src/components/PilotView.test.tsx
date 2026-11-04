@@ -156,6 +156,12 @@ describe('PilotView flight data', () => {
     expect(container.querySelector('.pv-mapwrap .leaflet-container')).not.toBeNull();
   });
 
+  it('holds at the start without autoplaying when autoPlay is off', () => {
+    render(<PilotView {...baseProps({ autoPlay: false, timeS: 0 })} />);
+    expect(screen.getByLabelText('Play simulation')).not.toBeNull();
+    expect(screen.getByText('T+0s')).not.toBeNull();
+  });
+
   it('flies the verified 23,000 ft route on the map once corrected', () => {
     const { container } = render(
       <PilotView

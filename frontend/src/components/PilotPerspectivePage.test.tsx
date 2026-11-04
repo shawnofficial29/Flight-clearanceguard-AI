@@ -30,6 +30,7 @@ function baseProps(overrides: Partial<PilotPerspectivePageProps> = {}): PilotPer
     atcVia: null,
     onBack: () => {},
     onReplay: () => {},
+    started: false,
     onConfirmAtc: () => {},
     onVerifyPilot: () => {},
     onTimeChange: () => {},
@@ -53,20 +54,23 @@ describe('PilotPerspectivePage', () => {
     expect(photos[1].getAttribute('src')).toBe('/cockpit-wide.webp');
   });
 
-  it('shows Start before the demo runs and Replay after', () => {
-    const idle = baseProps({
-      demo: null,
-      callsign: null,
-      timeS: 0,
-      syncStage: 'idle',
-      syncAlt: null,
-    });
-    const { rerender } = render(<PilotPerspectivePage {...idle} />);
+  it('shows Start until the pilot flow starts, then Replay', () => {
+    const onReplay = vi.fn();
+    const { rerender } = render(
+      <PilotPerspectivePage {...baseProps({ started: false, onReplay })} />,
+    );
     expect(screen.getByText('Start.')).not.toBeNull();
     expect(screen.queryByText('↻ Replay')).toBeNull();
-    rerender(<PilotPerspectivePage {...baseProps()} />);
+    fireEvent.click(screen.getByText('Start.'));
+    expect(onReplay).toHaveBeenCalledTimes(1);
+    rerender(<PilotPerspectivePage {...baseProps({ started: true })} />);
     expect(screen.getByText('↻ Replay')).not.toBeNull();
     expect(screen.queryByText('Start.')).toBeNull();
+  });
+
+  it('holds the tablet paused once the pilot flow has started', () => {
+    render(<PilotPerspectivePage {...baseProps({ started: true })} />);
+    expect(screen.getByLabelText('Play simulation')).not.toBeNull();
   });
 
   it('goes back to the demo when the back button is pressed', () => {

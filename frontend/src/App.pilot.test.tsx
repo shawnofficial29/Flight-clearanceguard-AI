@@ -48,6 +48,7 @@ function installFetch(): void {
     if (url.endsWith('/api/coordinate')) return jsonResponse(makeSyncCoordination());
     if (url.endsWith('/api/audit/events')) return jsonResponse(makeAuditEvents());
     if (url.endsWith('/api/audit/verify')) return jsonResponse(makeAuditVerify(7));
+    if (url.endsWith('/api/session/reset')) return jsonResponse({ status: 'reset' });
     throw new Error(`Unexpected fetch: ${url}`);
   };
   vi.stubGlobal('fetch', handler);
@@ -150,5 +151,20 @@ describe("pilot's perspective page", () => {
     expect(
       screen.queryByText('Maintain 23,000 feet and start decreasing after 15 miles.'),
     ).toBeNull();
+  });
+
+  it('resets the whole run when starting from the top-right button', async () => {
+    installFetch();
+    render(<App />);
+    fireEvent.click(await screen.findByText('▶ Run Demo'));
+    await screen.findByText('Pilot Correction');
+    fireEvent.click(screen.getByText("Pilot's Perspective"));
+    fireEvent.click(await screen.findByText('23,000 ✓'));
+    fireEvent.click(await screen.findByText('VERIFY', undefined, { timeout: 3000 }));
+    await screen.findByText('Notification sent to ATC2 for verification.');
+    fireEvent.click(await screen.findByText('Start.'));
+    await screen.findByText('CHECK ALTITUDE');
+    expect(screen.queryByText('Notification sent to ATC2 for verification.')).toBeNull();
+    expect(screen.getByText('↻ Replay')).not.toBeNull();
   });
 });

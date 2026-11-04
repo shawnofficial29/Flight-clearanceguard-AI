@@ -174,8 +174,33 @@ function drawPath(layer: L.Polyline | null, skip: boolean): (() => void) | undef
 
 const FIT_PADDING: [number, number] = [40, 40];
 const FIT_MAX_ZOOM = 12;
+/** Initial render never starts farther out than the 20 km / 10 mi scale. */
+const FIT_MIN_ZOOM = 9;
 
-function FitOnLoad({ bounds, fitKey }: { bounds: L.LatLngBoundsExpression; fitKey: string }): null {
+export function fitMap(
+  map: L.Map,
+  bounds: L.LatLngBoundsExpression,
+  padding: [number, number],
+  animate: boolean,
+): void {
+  map.fitBounds(bounds, { padding, maxZoom: FIT_MAX_ZOOM, animate });
+  if (map.getZoom() >= FIT_MIN_ZOOM) return;
+  // A far-out fit centers on empty water between the route and the
+  // intruder's full run; recenter on the encounter at the closer scale so
+  // the aircraft stay in frame.
+  const merit = scenarioNmToLatLng(FIX_ANCHORS.MERIT.x, FIX_ANCHORS.MERIT.y);
+  map.setView([merit.lat, merit.lng], FIT_MIN_ZOOM, { animate });
+}
+
+function FitOnLoad({
+  bounds,
+  fitKey,
+  padding,
+}: {
+  bounds: L.LatLngBoundsExpression;
+  fitKey: string;
+  padding: [number, number];
+}): null {
   const map = useMap();
   const reduced = useReducedMotion();
   const fittedRef = useRef<string | null>(null);
@@ -199,12 +224,15 @@ function FitOnLoad({ bounds, fitKey }: { bounds: L.LatLngBoundsExpression; fitKe
     }
     // Re-read the container size first so a late-applied layout still fits.
     map.invalidateSize();
-    map.fitBounds(bounds, { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM, animate: !reduced });
-  }, [map, bounds, fitKey, reduced]);
+    fitMap(map, bounds, padding, !reduced);
+  }, [map, bounds, fitKey, padding, reduced]);
   return null;
 }
 
-function MapControls(props: { bounds: L.LatLngBoundsExpression }): React.JSX.Element {
+function MapControls(props: {
+  bounds: L.LatLngBoundsExpression;
+  padding: [number, number];
+}): React.JSX.Element {
   const map = useMap();
   return (
     <div className="map-controls">
@@ -212,7 +240,7 @@ function MapControls(props: { bounds: L.LatLngBoundsExpression }): React.JSX.Ele
         type="button"
         title="Fit trajectories"
         aria-label="Fit trajectories"
-        onClick={() => map.fitBounds(props.bounds, { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM, animate: false })}
+        onClick={() => fitMap(map, props.bounds, props.padding, false)}
       >
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="ctl-icon">
           <path
@@ -249,6 +277,8 @@ export interface SimMapProps {
   atcVia: string | null;
   timeS: number;
   fitKey: string;
+  /** Tighter initial fit for small maps; defaults to the standard padding. */
+  fitPadding?: [number, number];
   /** Before/after comparison view; defaults to the pre-verification state. */
   view?: MapViewMode;
   /** Enables the Before/After toggle when provided. */
@@ -268,6 +298,7 @@ export const SimMap = memo(function SimMap(props: SimMapProps): React.JSX.Elemen
     atcVia,
     timeS,
     fitKey,
+    fitPadding = FIT_PADDING,
     view = 'before',
     onViewChange,
     tileUrl: tileUrlProp,
@@ -546,8 +577,8 @@ export const SimMap = memo(function SimMap(props: SimMapProps): React.JSX.Elemen
         )}
         <ZoomControl position="topright" />
         <ScaleControl position="bottomleft" />
-        <FitOnLoad bounds={bounds} fitKey={fitKey} />
-        <MapControls bounds={bounds} />
+        <FitOnLoad bounds={bounds} fitKey={fitKey} padding={fitPadding} />
+        <MapControls bounds={bounds} padding={fitPadding} />
         <Polyline positions={runwayEnds} color="#44403c" weight={8} opacity={0.9} />
         <Polyline
           positions={runwayEnds}

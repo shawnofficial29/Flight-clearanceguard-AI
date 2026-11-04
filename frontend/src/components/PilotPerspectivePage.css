@@ -171,8 +171,17 @@
 }
 
 .pp-photos .pp-photo {
-  flex: 1 1 0;
   min-width: 0;
+}
+
+/* Width shares match each photo's aspect (left 2304x1008, right 1878x967),
+ * so the contain-fit photos render at identical heights in any viewport. */
+.pp-photos .pp-photo:first-child {
+  flex: 2.286 1 0;
+}
+
+.pp-photos .pp-photo:nth-child(2) {
+  flex: 1.942 1 0;
 }
 
 .pp-photos .pp-photo-fallback {

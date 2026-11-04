@@ -90,6 +90,8 @@ export function App(): React.JSX.Element {
   const [mapView, setMapView] = useState<MapViewMode>('before');
   // Demo page vs Pilot's Perspective split page.
   const [page, setPage] = useState<'demo' | 'pilot'>('demo');
+  // Pilot runs started from the top-right button; remounts the tablet fresh.
+  const [runId, setRunId] = useState(0);
   // Active scenario id: the standard arc, or 'custom' after a voice clearance.
   const [scenarioId, setScenarioId] = useState<string>(SYNC_SCENARIO_ID);
   // Voice clearance from the pilot tablet: uploaded ATC audio transcription.
@@ -321,6 +323,16 @@ export function App(): React.JSX.Element {
     }
   }
 
+  // Pilot top-right button: reset the whole run, then start fresh. The run
+  // id remounts the tablet (time, timers, map fit) and flips Start to Replay.
+  async function handlePilotStart(): Promise<void> {
+    setRunId((n) => n + 1);
+    setMapTimeS(0);
+    setMapView('before');
+    await handleReset();
+    await handleRunDemo();
+  }
+
   const busy = demoLoading || correcting;
   const hasCorrection = correction !== null;
   const activeConflict = correction?.conflict ?? demo?.conflict ?? null;
@@ -336,6 +348,8 @@ export function App(): React.JSX.Element {
       </a>
       {page === 'pilot' ? (
         <PilotPerspectivePage
+          key={runId}
+          started={runId > 0}
           demo={demo}
           correction={correction}
           callsign={callsign}
@@ -355,7 +369,7 @@ export function App(): React.JSX.Element {
           onUploadAudio={(file) => void handleUploadAudio(file)}
           onApplyTranscript={(text) => void handleApplyTranscript(text)}
           onBack={() => setPage('demo')}
-          onReplay={() => void handleRunDemo()}
+          onReplay={() => void handlePilotStart()}
         />
       ) : (
         <>
