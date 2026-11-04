@@ -88,6 +88,12 @@ export const api = {
       scenario_id: scenarioId,
     });
   },
+  runCustomAtc(atcText: string, useLive: boolean): Promise<DemoResult> {
+    return post<DemoResult>('/api/demo/run-custom', {
+      atc_text: atcText,
+      use_live: useLive,
+    });
+  },
   runCorrection(useLive: boolean, scenarioId: string | null): Promise<CorrectionResult> {
     return post<CorrectionResult>('/api/demo/correct', {
       use_live: useLive,

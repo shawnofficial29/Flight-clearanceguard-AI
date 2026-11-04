@@ -9,7 +9,7 @@ const ALTITUDES = {
   callsign: 'META 452',
   atcClearedFt: 23000,
   pilotSetFt: 22000,
-  trafficFt: 22000,
+  trafficFt: 30000,
 };
 
 afterEach(() => {
@@ -34,6 +34,11 @@ function baseProps(overrides: Partial<PilotViewProps> = {}): PilotViewProps {
     onConfirmAtc: () => {},
     onVerifyPilot: () => {},
     onTimeChange: () => {},
+    voiceTranscript: null,
+    voiceAudioSrc: null,
+    voiceError: null,
+    onUploadAudio: () => {},
+    onApplyTranscript: () => {},
     ...overrides,
   };
 }
@@ -131,7 +136,8 @@ describe('PilotView clearance phases', () => {
     );
     expect(screen.getByText(/CLEARANCE SYNCHRONIZED/)).not.toBeNull();
     expect(screen.getByText('Notification sent to ATC2 for verification.')).not.toBeNull();
-    expect(screen.getAllByText('23,000 ft').length).toBe(2);
+    // CLEARED row + synchronized display + readout ALT now flying 23,000.
+    expect(screen.getAllByText('23,000 ft').length).toBe(3);
     expect(container.querySelector('.pv-clear')?.getAttribute('data-tone')).toBe('ok');
   });
 });
@@ -148,6 +154,21 @@ describe('PilotView flight data', () => {
     expect(screen.getByText('23,000 ft')).not.toBeNull();
     expect(screen.getByText('T+100s')).not.toBeNull();
     expect(container.querySelector('.pv-mapwrap .leaflet-container')).not.toBeNull();
+  });
+
+  it('flies the verified 23,000 ft route on the map once corrected', () => {
+    const { container } = render(
+      <PilotView
+        {...baseProps({
+          correction: makeSyncCorrection(),
+          syncStage: 'done',
+          atcChoiceFt: 23000,
+        })}
+      />,
+    );
+    const tag = container.querySelector('.pv-mapwrap .ac-tag');
+    expect(tag?.textContent ?? '').toContain('23,000 ft');
+    expect(tag?.textContent ?? '').not.toContain('22,000 ft');
   });
 });
 
@@ -244,7 +265,9 @@ describe('PilotView controls do the same thing as the demo', () => {
 describe('PilotView ATC voice example', () => {
   it('shows the example instruction as the transcript', () => {
     render(<PilotView {...baseProps()} />);
-    expect(screen.getByText('Decrease to 23,000 feet.')).not.toBeNull();
+    expect(
+      screen.getByText('Maintain 23,000 feet and start decreasing after 15 miles.'),
+    ).not.toBeNull();
   });
 
   it('plays the ATC audio when the pilot listens', () => {
@@ -263,5 +286,53 @@ describe('PilotView ATC voice example', () => {
     render(<PilotView {...baseProps()} />);
     fireEvent.click(screen.getByText('▶ Listen'));
     await screen.findByText(/frontend\/public\/atc-audio\.mp3/);
+  });
+
+  it('passes the uploaded file up for transcription', () => {
+    const onUploadAudio = vi.fn();
+    const { container } = render(<PilotView {...baseProps({ onUploadAudio })} />);
+    const input = container.querySelector('.pv-fileinput') as HTMLInputElement;
+    const file = new File(['fake audio'], 'atc-15000.wav', { type: 'audio/wav' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    fireEvent.change(input);
+    expect(onUploadAudio).toHaveBeenCalledWith(file);
+  });
+
+  it('shows the transcribed clearance instead of the example', () => {
+    render(
+      <PilotView {...baseProps({ voiceTranscript: 'META 452, decrease to 15,000 feet.' })} />,
+    );
+    expect(screen.getByText('META 452, decrease to 15,000 feet.')).not.toBeNull();
+    expect(
+      screen.queryByText('Maintain 23,000 feet and start decreasing after 15 miles.'),
+    ).toBeNull();
+  });
+
+  it('falls back to typed input when transcription fails', () => {
+    const onApplyTranscript = vi.fn();
+    render(
+      <PilotView
+        {...baseProps({
+          voiceError: 'Transcription unavailable — type what ATC said instead.',
+          onApplyTranscript,
+        })}
+      />,
+    );
+    const box = screen.getByLabelText('Type what ATC said') as HTMLInputElement;
+    fireEvent.change(box, { target: { value: 'META 452, decrease to 15,000 feet.' } });
+    fireEvent.click(screen.getByText('Apply'));
+    expect(onApplyTranscript).toHaveBeenCalledWith('META 452, decrease to 15,000 feet.');
+  });
+
+  it('plays the uploaded recording when the pilot listens', () => {
+    const play = vi
+      .spyOn(window.HTMLMediaElement.prototype, 'play')
+      .mockResolvedValue(undefined);
+    const { container } = render(
+      <PilotView {...baseProps({ voiceAudioSrc: 'blob:mock-audio' })} />,
+    );
+    expect(container.querySelector('audio')?.getAttribute('src')).toBe('blob:mock-audio');
+    fireEvent.click(screen.getByText('▶ Listen'));
+    expect(play).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,7 +6,7 @@ from typing import Any
 
 from .config import Settings
 from .models import CorrectionResult, DemoResult
-from .scenarios import get_scenario, run_scenario
+from .scenarios import clear_custom_scenarios, get_scenario, run_scenario
 from .services import audit
 from .services.model_client import JsonTransport
 
@@ -21,6 +21,7 @@ _SESSION: dict[str, Any] = {}
 def reset_session() -> dict[str, str]:
     """Start a clean demonstration session, including the audit chain."""
     _SESSION.clear()
+    clear_custom_scenarios()
     audit.reset_chain()
     return {"status": "reset"}
 

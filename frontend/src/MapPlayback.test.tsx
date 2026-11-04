@@ -651,9 +651,9 @@ describe('RouteView before/after presentation', () => {
         timeS={0}
       />,
     );
-    expect(screen.getByText('14,000')).not.toBeNull();
-    expect(screen.getByText('24,000')).not.toBeNull();
-    expect(screen.getByText('1,000 ft separation')).not.toBeNull();
+    expect(screen.getByText('10,000')).not.toBeNull();
+    expect(screen.getByText('30,000')).not.toBeNull();
+    expect(screen.getByText('7,000 ft separation')).not.toBeNull();
   });
 
   it('reports view changes so the rail side view follows the map', () => {

@@ -56,6 +56,14 @@ def test_pilot_fallback_never_infers_condition(offline_settings: Settings):
     assert intent.provenance == "fixture_fallback"
 
 
+def test_decrease_counts_as_descend_verb(offline_settings: Settings):
+    intent = atc_intent.parse_atc(
+        "META 452, decrease to 15,000 feet.", offline_settings, force_fixture=True
+    )
+    descend = _by_type(intent, "DESCEND")
+    assert (descend.numeric_value, descend.unit) == (15000, "FT")
+
+
 def test_descend_and_maintain_is_one_action(offline_settings: Settings):
     intent = atc_intent.parse_atc(DEMO_ATC_TRANSCRIPT, offline_settings, force_fixture=True)
     assert [a.action_type for a in intent.actions].count("MAINTAIN") == 0

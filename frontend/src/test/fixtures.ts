@@ -103,9 +103,9 @@ function gradualKt(t: number): number {
   return Math.max(290 - t, 250);
 }
 
-/** Intruder track: constant 250 kt north along x=18 NM. */
-export function intruderTrack(t: number): { x: number; y: number } {
-  return { x: 18, y: -100 / 9 + (t / 3600) * 250 };
+/** Intruder track: straight north at kt. Sync arc crosses at x=20 NM. */
+export function intruderTrack(t: number, xNm = 18, kt = 250): { x: number; y: number } {
+  return { x: xNm, y: -100 / 9 + (t / 3600) * kt };
 }
 
 function point(t: number, alt: number): ProfilePoint {
@@ -459,8 +459,8 @@ export function makeAuditEvents(): AuditEvent[] {
   ];
 }
 
-const SYNC_ATC_TEXT = 'META 452, maintain 23,000 feet.';
-const SYNC_PILOT_TEXT = 'META 452, maintain 22,000 feet.';
+const SYNC_ATC_TEXT = 'META 452, maintain 23,000 feet and start decreasing after 15 miles.';
+const SYNC_PILOT_TEXT = 'META 452, maintain 22,000 feet and start decreasing after 15 miles.';
 
 function syncAction(value: number): ClearanceAction {
   return {
@@ -478,6 +478,8 @@ function syncAction(value: number): ClearanceAction {
 const SYNC_MERIT_T_S = 248.28;
 const SYNC_DESCENT_FPS = 2100 / 60;
 const SYNC_LANDING_FT = 10000;
+/** Fast straight-north traffic clears the crossing well before META 452. */
+const SYNC_INTRUDER_KT = 500;
 
 /** Landing descent past MERIT: hold the cleared level until past the
  * traffic, then descend to 15,000 ft and slow to 250 kt for the airport. */
@@ -492,7 +494,7 @@ function syncKt(t: number): number {
 }
 
 function syncPoint(t: number, alt: number): ProfilePoint {
-  const tfc = intruderTrack(t);
+  const tfc = intruderTrack(t, 20, SYNC_INTRUDER_KT);
   return {
     t_s: t,
     meta_x_nm: (290 * t) / 3600,
@@ -500,28 +502,28 @@ function syncPoint(t: number, alt: number): ProfilePoint {
     meta_kt: syncKt(t),
     intruder_x_nm: tfc.x,
     intruder_y_nm: tfc.y,
-    intruder_ft: 22000,
-    intruder_kt: 250,
+    intruder_ft: 30000,
+    intruder_kt: SYNC_INTRUDER_KT,
   };
 }
 
-/** Numbers mirror the verified backend altitude-sync arc (conflict at T+165 s). */
+/** Numbers mirror the verified backend altitude-sync arc (traffic well clear). */
 export function makeSyncConflict(): ConflictPrediction {
   return {
-    conflict: true,
-    first_conflict_time_s: 165.0,
-    lateral_nm_at_conflict: 4.72,
-    vertical_ft_at_conflict: 0.0,
-    closest_lateral_nm: 3.34,
-    min_vertical_ft: 0.0,
-    conflict_point_nm: { x_nm: 13.29, y_nm: 0.0 },
+    conflict: false,
+    first_conflict_time_s: null,
+    lateral_nm_at_conflict: null,
+    vertical_ft_at_conflict: null,
+    closest_lateral_nm: 11.73,
+    min_vertical_ft: 8000.0,
+    conflict_point_nm: null,
     lateral_threshold_nm: 5,
     vertical_threshold_ft: 1000,
     basis: 'test basis',
     merit_time_s: 248.28,
-    merit_vertical_gap_ft: 0.0,
+    merit_vertical_gap_ft: 8000.0,
     plan_merit_time_s: 248.28,
-    intruder_merit_time_s: 160.0,
+    intruder_merit_time_s: 80.0,
     profile: [syncPoint(0, 23000), syncPoint(30, 22000), syncPoint(165, 22000), syncPoint(432, syncTailAlt(432, 22000))],
     plan_profile: [syncPoint(0, 23000), syncPoint(30, 23000), syncPoint(165, 23000), syncPoint(432, syncTailAlt(432, 23000))],
   };
@@ -533,16 +535,16 @@ export function makeSyncClearConflict(): ConflictPrediction {
     first_conflict_time_s: null,
     lateral_nm_at_conflict: null,
     vertical_ft_at_conflict: null,
-    closest_lateral_nm: 3.34,
-    min_vertical_ft: 1000.0,
+    closest_lateral_nm: 11.73,
+    min_vertical_ft: 7000.0,
     conflict_point_nm: null,
     lateral_threshold_nm: 5,
     vertical_threshold_ft: 1000,
     basis: 'test basis',
     merit_time_s: 248.28,
-    merit_vertical_gap_ft: 1000.0,
+    merit_vertical_gap_ft: 7000.0,
     plan_merit_time_s: 248.28,
-    intruder_merit_time_s: 160.0,
+    intruder_merit_time_s: 80.0,
     profile: [syncPoint(0, 23000), syncPoint(30, 23000), syncPoint(165, 23000), syncPoint(432, syncTailAlt(432, 23000))],
     plan_profile: [syncPoint(0, 23000), syncPoint(30, 23000), syncPoint(165, 23000), syncPoint(432, syncTailAlt(432, 23000))],
   };
@@ -652,33 +654,28 @@ export function makeSyncDemo(): DemoResult {
   };
 }
 
-/** Safety window mirroring the backend altitude-sync arc (conflict at T+165 s). */
+/** Safety window mirroring the backend altitude-sync arc (traffic well clear). */
 export function makeSyncSafetyWindow(): SafetyWindow {
   return {
-    conflict_time_s: 165,
+    conflict_time_s: null,
     first_warning_time_s: 0,
-    last_safe_correction_s: 0,
-    seconds_remaining_s: 0,
-    position_at_last_safe: { x_nm: 0, alt_ft: 23000 },
+    last_safe_correction_s: null,
+    seconds_remaining_s: null,
+    position_at_last_safe: null,
     min_sep_no_correction: {
-      min_lateral_nm: 3.34,
-      vertical_at_min_lateral_ft: 0,
-      min_vertical_ft: 0,
-      lateral_at_min_vertical_nm: 3.34,
+      min_lateral_nm: 11.73,
+      vertical_at_min_lateral_ft: 8000,
+      min_vertical_ft: 7000,
+      lateral_at_min_vertical_nm: 22.88,
     },
     min_sep_after_correction: {
-      min_lateral_nm: 3.34,
-      vertical_at_min_lateral_ft: 1000,
-      min_vertical_ft: 1000,
-      lateral_at_min_vertical_nm: 3.34,
+      min_lateral_nm: 11.73,
+      vertical_at_min_lateral_ft: 7000,
+      min_vertical_ft: 7000,
+      lateral_at_min_vertical_nm: 22.88,
     },
-    causal_chain: [
-      { step: 1, stage: 'MISMATCH', detail: 'ATC cleared 23,000 ft; pilot set 22,000 ft.' },
-      { step: 2, stage: 'FMS', detail: 'FMS holds the misheard 22,000 ft.' },
-      { step: 3, stage: 'TRAJECTORY', detail: 'Wrong setting descends into traffic altitude.' },
-      { step: 4, stage: 'CONFLICT', detail: 'Loss of separation at T+165 s.' },
-    ],
-    basis: 'test basis',
+    causal_chain: [{ step: 1, stage: 'PREDICTION', detail: 'No trajectory conflict predicted.' }],
+    basis: 'No conflict predicted; correction window is open over the horizon.',
   };
 }
 
@@ -700,12 +697,12 @@ export function makeSyncCandidates(): ResolutionCandidate[] {
       action_human: 'Restore ATC MAINTAIN 23000 FT (CHANGED_VALUE).',
       source_evidence: 'maintain 23,000 feet',
       conflict_after: false,
-      min_lateral_nm: 3.34,
-      min_vertical_ft: 1000,
+      min_lateral_nm: 11.73,
+      min_vertical_ft: 7000,
       verification: 'VERIFIED',
       safe_reason:
         'Restored ATC value removes the divergence; at closest lateral approach ' +
-        '(3.34 NM) vertical separation is 1,000 ft with no conflict.',
+        '(11.73 NM) vertical separation is 7,000 ft with no conflict.',
     },
   ];
 }
@@ -716,8 +713,8 @@ export function makeSyncVerification(): VerificationResult {
     verified: true,
     matrix_overall: 'agree',
     conflict_after: false,
-    min_lateral_nm: 3.34,
-    min_vertical_ft: 1000,
+    min_lateral_nm: 11.73,
+    min_vertical_ft: 7000,
     reason: 'Recomputed comparison is agree; conflict=false.',
   };
 }

@@ -386,6 +386,58 @@
   color: #9aa0a8;
 }
 
+.pv-audiobtns {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pv-upload {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e8eaed;
+  background: #2b2e33;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.pv-fileinput {
+  display: none;
+}
+
+.pv-voiceerr {
+  font-size: 11px;
+  color: #ff6b6b;
+}
+
+.pv-typerow {
+  display: flex;
+  gap: 6px;
+}
+
+.pv-typebox {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #e8eaed;
+  background: #101114;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.pv-apply {
+  font-size: 12px;
+  font-weight: 700;
+  color: #16171a;
+  background: #e8eaed;
+  border: 1px solid #e8eaed;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
 /* Transport */
 
 .pv-transport {

@@ -54,7 +54,7 @@ def test_sync_candidate_restores_atc_altitude(offline_settings: Settings):
     assert [c.id for c in candidates] == ["changed-value-maintain-0"]
     assert candidates[0].verification == "VERIFIED"
     assert candidates[0].conflict_after is False
-    assert candidates[0].min_vertical_ft == 1000.0
+    assert candidates[0].min_vertical_ft == 7000.0
 
 
 def test_verify_candidate_recomputes(offline_settings: Settings):

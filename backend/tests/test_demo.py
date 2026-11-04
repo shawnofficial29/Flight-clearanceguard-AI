@@ -4,14 +4,14 @@ from app.config import Settings
 from app.demo import reset_session, run_correction, run_demo
 
 
-def test_demo_run_detects_mismatch_and_conflict(offline_settings: Settings):
+def test_demo_run_detects_mismatch_without_conflict(offline_settings: Settings):
     reset_session()
     result = run_demo(offline_settings, use_live=False, scenario_id="altitude-sync")
     assert result.comparison.overall == "mismatch"
     assert {f.category for f in result.comparison.findings} == {"CHANGED_VALUE"}
     assert result.comparison.missing_condition is False
-    assert result.conflict.conflict is True
-    assert result.conflict.first_conflict_time_s == 165.0
+    assert result.conflict.conflict is False
+    assert result.conflict.first_conflict_time_s is None
     assert "CHANGED_VALUE" in result.explanation.summary
     assert "Pilot confirms corrected FMS entry" in result.explanation.recommended_action
     assert set(result.badges.values()) == {"Fixture fallback"}

@@ -5,8 +5,9 @@ import type { SyncAltitudes } from '../utils/syncFlow';
 import { PilotView } from './PilotView';
 import './PilotPerspectivePage.css';
 
-/** Cockpit photo served from the public folder. */
-const PHOTO_SRC = '/cockpit-tablet.webp';
+/** Cockpit photos served from the public folder: tablet close-up, then wide view. */
+const PHOTO_LEFT_SRC = '/cockpit-tablet-closeup.png';
+const PHOTO_RIGHT_SRC = '/cockpit-wide.webp';
 
 export interface PilotPerspectivePageProps {
   demo: DemoResult | null;
@@ -22,6 +23,11 @@ export interface PilotPerspectivePageProps {
   onConfirmAtc: (choiceFt: number) => void;
   onVerifyPilot: () => void;
   onTimeChange: (t: number) => void;
+  voiceTranscript: string | null;
+  voiceAudioSrc: string | null;
+  voiceError: string | null;
+  onUploadAudio: (file: File) => void;
+  onApplyTranscript: (text: string) => void;
   onBack: () => void;
   onReplay: () => void;
 }
@@ -49,6 +55,11 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
     onConfirmAtc,
     onVerifyPilot,
     onTimeChange,
+    voiceTranscript,
+    voiceAudioSrc,
+    voiceError,
+    onUploadAudio,
+    onApplyTranscript,
     onBack,
     onReplay,
   } = props;
@@ -80,6 +91,11 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
               onConfirmAtc={onConfirmAtc}
               onVerifyPilot={onVerifyPilot}
               onTimeChange={onTimeChange}
+              voiceTranscript={voiceTranscript}
+              voiceAudioSrc={voiceAudioSrc}
+              voiceError={voiceError}
+              onUploadAudio={onUploadAudio}
+              onApplyTranscript={onApplyTranscript}
             />
           </div>
         </div>
@@ -87,15 +103,19 @@ export const PilotPerspectivePage = memo(function PilotPerspectivePage(
           <span>where it lives: the cockpit tablet</span>
         </div>
         <div className="pp-bottom">
-          <CockpitPhoto />
-          <div className="pp-caption">PMDG 777 cockpit — the pilot&apos;s EFB tablet</div>
+          <div className="pp-photos">
+            <CockpitPhoto src={PHOTO_LEFT_SRC} alt="Pilot tablet showing ClearanceGuard" />
+            <CockpitPhoto src={PHOTO_RIGHT_SRC} alt="Wide cockpit view with pilot tablets" />
+          </div>
+          <div className="pp-caption">A clearance card, ClearanceGuard AI, on the tablet of the pilot in the cockpit</div>
         </div>
       </div>
     </div>
   );
 });
 
-function CockpitPhoto(): React.JSX.Element {
+function CockpitPhoto(props: { src: string; alt: string }): React.JSX.Element {
+  const { src, alt } = props;
   const [photoMissing, setPhotoMissing] = useState(false);
   if (photoMissing) {
     return (
@@ -106,8 +126,8 @@ function CockpitPhoto(): React.JSX.Element {
   }
   return (
     <img
-      src={PHOTO_SRC}
-      alt="Cockpit tablet"
+      src={src}
+      alt={alt}
       className="pp-photo"
       draggable={false}
       onError={() => setPhotoMissing(true)}

@@ -16,19 +16,19 @@ def test_altitude_sync_is_default_and_first_listed():
 
 
 def test_altitude_sync_numbers_come_from_simulation(offline_settings: Settings):
-    """The 23k/22k sync arc: wrong-FMS path descends into traffic, the fix
-    holds level until past, then both descend for landing."""
+    """The 23k/22k sync arc: the misheard level is caught and verified
+    while traffic stays well clear, then both descend for landing."""
     result = run_scenario(SCENARIOS["altitude-sync"], offline_settings, use_live=False)
     initial = result.initial
     assert initial.fms.cleared_alt_ft == 22000
     assert initial.fms.summary == "Maintain 22,000 ft immediate"
-    assert initial.conflict.conflict is True
-    assert initial.conflict.first_conflict_time_s == 165.0
+    assert initial.conflict.conflict is False
+    assert initial.conflict.first_conflict_time_s is None
     before_alts = [point.meta_ft for point in initial.conflict.profile]
     assert before_alts[0] == 23000.0
     assert 22000.0 in before_alts
     assert min(before_alts) == 10000.0
-    assert initial.conflict.profile[0].intruder_ft == 22000.0
+    assert initial.conflict.profile[0].intruder_ft == 30000.0
     corrected = result.corrected
     corrected_alts = [point.meta_ft for point in corrected.conflict.profile]
     assert corrected_alts[0] == 23000.0
@@ -38,9 +38,9 @@ def test_altitude_sync_numbers_come_from_simulation(offline_settings: Settings):
     assert corrected_alts[17] < 23000.0
     assert corrected.conflict.profile[-1].meta_ft == 10000.0
     assert corrected.conflict.profile[-1].meta_kt == 175.0
-    assert corrected.conflict.min_vertical_ft == 1000.0
+    assert corrected.conflict.min_vertical_ft == 7000.0
     assert corrected.conflict.merit_time_s == 248.28
-    assert corrected.conflict.merit_vertical_gap_ft == 1000.0
+    assert corrected.conflict.merit_vertical_gap_ft == 7000.0
     assert result.resolved is True
 
 
@@ -67,11 +67,11 @@ def test_altitude_sync_descends_and_slows_toward_landing(offline_settings: Setti
     assert corrected.profile[20].meta_ft < 23000.0
     assert corrected.profile[-1].meta_ft == 10000.0
     assert corrected.profile[-1].meta_kt == 175.0
-    assert corrected.min_vertical_ft == 1000.0
+    assert corrected.min_vertical_ft == 7000.0
     assert corrected.merit_time_s == 248.28
-    assert corrected.merit_vertical_gap_ft == 1000.0
-    assert result.initial.conflict.conflict is True
-    assert result.initial.conflict.first_conflict_time_s == 165.0
+    assert corrected.merit_vertical_gap_ft == 7000.0
+    assert result.initial.conflict.conflict is False
+    assert result.initial.conflict.first_conflict_time_s is None
 
 
 @pytest.mark.parametrize("scenario_id", sorted(SCENARIOS))

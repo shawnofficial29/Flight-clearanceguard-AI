@@ -22,7 +22,7 @@ function baseProps(overrides: Partial<PilotPerspectivePageProps> = {}): PilotPer
       callsign: 'META 452',
       atcClearedFt: 23000,
       pilotSetFt: 22000,
-      trafficFt: 22000,
+      trafficFt: 30000,
     },
     correcting: false,
     atcChoiceFt: null,
@@ -33,17 +33,24 @@ function baseProps(overrides: Partial<PilotPerspectivePageProps> = {}): PilotPer
     onConfirmAtc: () => {},
     onVerifyPilot: () => {},
     onTimeChange: () => {},
+    voiceTranscript: null,
+    voiceAudioSrc: null,
+    voiceError: null,
+    onUploadAudio: () => {},
+    onApplyTranscript: () => {},
     ...overrides,
   };
 }
 
 describe('PilotPerspectivePage', () => {
-  it('shows the pilot tablet on top and the cockpit photo below', () => {
+  it('shows the pilot tablet on top and two cockpit photos below', () => {
     const { container } = render(<PilotPerspectivePage {...baseProps()} />);
     expect(container.querySelector('.pp-top .pv-device')).not.toBeNull();
     expect(screen.getByText('ClearanceGuard')).not.toBeNull();
-    const photo = container.querySelector('.pp-bottom img.pp-photo') as HTMLImageElement | null;
-    expect(photo?.getAttribute('src')).toBe('/cockpit-tablet.webp');
+    const photos = container.querySelectorAll('.pp-bottom img.pp-photo');
+    expect(photos.length).toBe(2);
+    expect(photos[0].getAttribute('src')).toBe('/cockpit-tablet-closeup.png');
+    expect(photos[1].getAttribute('src')).toBe('/cockpit-wide.webp');
   });
 
   it('shows Start before the demo runs and Replay after', () => {
@@ -69,13 +76,12 @@ describe('PilotPerspectivePage', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('explains where to save the photo when it is missing', () => {
+  it('explains when a photo is missing without hiding the other', () => {
     const { container } = render(<PilotPerspectivePage {...baseProps()} />);
-    const photo = container.querySelector('.pp-bottom img.pp-photo') as HTMLElement | null;
-    expect(photo).not.toBeNull();
-    if (photo !== null) {
-      fireEvent.error(photo);
-    }
+    const photos = container.querySelectorAll('.pp-bottom img.pp-photo');
+    expect(photos.length).toBe(2);
+    fireEvent.error(photos[0]);
     expect(screen.getByText('Cockpit photo unavailable.')).not.toBeNull();
+    expect(container.querySelectorAll('.pp-bottom img.pp-photo').length).toBe(1);
   });
 });

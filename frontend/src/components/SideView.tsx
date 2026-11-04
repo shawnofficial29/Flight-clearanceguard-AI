@@ -36,8 +36,11 @@ function altitudeDomain(values: number[]): AltitudeDomain {
   const step =
     TICK_STEPS.find((candidate) => Math.floor(padded / candidate) + 1 <= MAX_TICKS) ?? 10000;
   const min = Math.max(AXIS_FLOOR, Math.floor((lo - span * 0.15) / step) * step);
-  let max = Math.min(AXIS_CEIL, Math.ceil((hi + span * 0.15) / step) * step);
-  if (max <= min) max = Math.min(AXIS_CEIL, min + step);
+  // The ceiling lifts only when the data itself runs higher (traffic at
+  // 30,000 ft); lower datasets keep the familiar framing untouched.
+  const ceil = Math.max(AXIS_CEIL, Math.ceil(hi / step) * step);
+  let max = Math.min(ceil, Math.ceil((hi + span * 0.15) / step) * step);
+  if (max <= min) max = Math.min(ceil, min + step);
   const ticks: number[] = [];
   for (let tick = min; tick <= max + 1e-9; tick += step) ticks.push(Math.round(tick));
   return { min, max, ticks };

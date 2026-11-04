@@ -297,6 +297,13 @@ class DemoRequest(BaseModel):
     scenario_id: str | None = None
 
 
+class CustomDemoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    atc_text: str
+    use_live: bool = False
+
+
 class SeparationMinima(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

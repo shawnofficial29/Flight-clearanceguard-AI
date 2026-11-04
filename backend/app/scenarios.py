@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import re
+
 from .agents import atc_intent, explanation, pilot_intent
+from .agents.fallback import parse_transcript
 from .config import Settings
 from .models import BADGE_LABELS, CorrectionResult, DemoResult, ScenarioGeometry, ScenarioResult
 from .services import audit, comparison, conflict, fms
@@ -27,9 +30,14 @@ ARRIVAL_GEOMETRY = ScenarioGeometry(
 )
 SYNC_GEOMETRY = ScenarioGeometry(
     own_init_alt_ft=23000.0,
-    intruder_alt_ft=22000.0,
-    intruder_start_nm=(18.0, -100.0 / 9.0),
-    intruder_vel_kt=(0.0, 250.0),
+    # Generous vertical margins: the intruder rides at 30,000 ft, well
+    # above the mis-set level, so the encounter never becomes a loss of
+    # separation — the story is the caught misheard altitude itself.
+    intruder_alt_ft=30000.0,
+    intruder_start_nm=(20.0, -100.0 / 9.0),
+    # Fast straight-north traffic: it clears the crossing well before META
+    # 452 arrives, so the two aircraft are never close to each other.
+    intruder_vel_kt=(0.0, 500.0),
     descend_rate_fpm=2100.0,
     own_speed_kt=290.0,
     # Landing tail past MERIT toward the airport: hold the cleared level
@@ -58,13 +66,13 @@ SCENARIOS: dict[str, Scenario] = {
     "altitude-sync": Scenario(
         id="altitude-sync",
         title="Altitude sync — pilot sets 22,000 ft, ATC cleared 23,000 ft",
-        atc_text="META 452, maintain 23,000 feet.",
-        pilot_text="META 452, maintain 22,000 feet.",
-        corrected_text="META 452, maintain 23,000 feet.",
+        atc_text="META 452, maintain 23,000 feet and start decreasing after 15 miles.",
+        pilot_text="META 452, maintain 22,000 feet and start decreasing after 15 miles.",
+        corrected_text="META 452, maintain 23,000 feet and start decreasing after 15 miles.",
         geometry=SYNC_GEOMETRY,
         expect_overall="mismatch",
         expect_categories=frozenset({"CHANGED_VALUE"}),
-        expect_conflict=True,
+        expect_conflict=False,
     ),
 }
 
@@ -74,11 +82,91 @@ DEFAULT_SCENARIO_ID = "altitude-sync"
 def get_scenario(scenario_id: str | None) -> Scenario:
     if not scenario_id:
         return SCENARIOS[DEFAULT_SCENARIO_ID]
+    if scenario_id in _CUSTOM_SCENARIOS:
+        return _CUSTOM_SCENARIOS[scenario_id]
     try:
         return SCENARIOS[scenario_id]
     except KeyError as exc:
-        known = ", ".join(sorted(SCENARIOS))
+        known = ", ".join(sorted([*SCENARIOS, *_CUSTOM_SCENARIOS]))
         raise ValueError(f"Unknown scenario '{scenario_id}'. Known: {known}.") from exc
+
+
+CUSTOM_SCENARIO_ID = "custom"
+
+_CUSTOM_SCENARIOS: dict[str, Scenario] = {}
+
+_FEET_NUMBER = re.compile(r"(\d[\d,]*)\s*feet", re.IGNORECASE)
+
+#: Custom clearances must keep the misheard level above the landing tail.
+MIN_CUSTOM_CLEARED_FT = 11000
+MAX_CUSTOM_CLEARED_FT = 45000
+MISHEAR_BELOW_FT = 1000
+#: Traffic rides below the misheard level, mirroring SYNC_GEOMETRY margins.
+INTRUDER_BELOW_PILOT_FT = 600
+
+_VERTICAL_ACTIONS = ("MAINTAIN", "CLIMB", "DESCEND")
+
+
+def register_custom_scenario(atc_text: str) -> Scenario:
+    """Build the misheard-altitude arc around a transcribed ATC clearance.
+
+    The pilot mishears exactly 1,000 ft low and the intruder rides 600 ft
+    below that level, so the encounter keeps the scenario's shape and
+    realistic margins at any clearance. Raises ValueError when no usable
+    feet altitude is present.
+    """
+    intent = parse_transcript(atc_text, "atc")
+    cleared: int | None = None
+    for action in intent.actions:
+        if (
+            action.action_type in _VERTICAL_ACTIONS
+            and action.unit == "FT"
+            and action.numeric_value is not None
+        ):
+            cleared = int(action.numeric_value)
+            break
+    if cleared is None:
+        raise ValueError("No altitude in feet found in the ATC text.")
+    if not MIN_CUSTOM_CLEARED_FT <= cleared <= MAX_CUSTOM_CLEARED_FT:
+        raise ValueError(
+            f"Cleared altitude {cleared:,} ft is outside "
+            f"{MIN_CUSTOM_CLEARED_FT:,}–{MAX_CUSTOM_CLEARED_FT:,} ft."
+        )
+    pilot = cleared - MISHEAR_BELOW_FT
+
+    def _swap_first_feet_number(text: str) -> str:
+        match = _FEET_NUMBER.search(text)
+        if match is None:  # pragma: no cover - cleared implies a feet number
+            return text
+        return text[: match.start(1)] + f"{pilot:,}" + text[match.end(1) :]
+
+    # Custom arcs keep the slower crossing so a misheard level still meets
+    # traffic laterally; the standard arc's fast flyby never gets within 5 NM.
+    geometry = SYNC_GEOMETRY.model_copy(
+        update={
+            "own_init_alt_ft": float(cleared),
+            "intruder_alt_ft": float(pilot - INTRUDER_BELOW_PILOT_FT),
+            "intruder_vel_kt": (0.0, 250.0),
+        }
+    )
+    scenario = Scenario(
+        id=CUSTOM_SCENARIO_ID,
+        title=f"Custom — pilot sets {pilot:,} ft, ATC cleared {cleared:,} ft",
+        atc_text=atc_text,
+        pilot_text=_swap_first_feet_number(atc_text),
+        corrected_text=atc_text,
+        geometry=geometry,
+        expect_overall="mismatch",
+        expect_categories=frozenset({"CHANGED_VALUE"}),
+        expect_conflict=True,
+        fms_drops_condition=False,
+    )
+    _CUSTOM_SCENARIOS[CUSTOM_SCENARIO_ID] = scenario
+    return scenario
+
+
+def clear_custom_scenarios() -> None:
+    _CUSTOM_SCENARIOS.clear()
 
 
 def run_scenario(

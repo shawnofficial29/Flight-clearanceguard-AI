@@ -164,10 +164,26 @@
   border-top: 1px solid #26282a;
 }
 
+.pp-photos {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.pp-photos .pp-photo {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.pp-photos .pp-photo-fallback {
+  position: static;
+  flex: 1 1 0;
+}
+
 .pp-photo {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 

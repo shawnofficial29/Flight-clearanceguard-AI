@@ -107,12 +107,12 @@ describe('demo transition', () => {
         .disabled,
     ).toBe(true);
     expect(screen.getByText('set 22,000, cleared 23,000')).not.toBeNull();
-    expect(screen.getByText('Conflict in 165 s')).not.toBeNull();
-    expect(screen.getByText('Conflict predicted in').nextElementSibling?.textContent).toContain(
-      '165 seconds',
+    expect(screen.getByText('Mismatch — no conflict predicted')).not.toBeNull();
+    expect(screen.getByText('Conflict predicted in').nextElementSibling?.textContent).toBe(
+      'No conflict predicted',
     );
     expect(screen.getByText('Timing').nextElementSibling?.textContent).toBe(
-      'Crosses MERIT 88 s after traffic ✓',
+      'Crosses MERIT 168 s after traffic ✓',
     );
 
     fireEvent.click(screen.getByLabelText(/changed-value-maintain-0/));
@@ -157,8 +157,8 @@ describe('demo transition', () => {
     expect(screen.getByText('Corrected trajectory (executed)')).not.toBeNull();
     expect(screen.getByText('Pre-correction trajectory')).not.toBeNull();
     expect(screen.getByText('Conflict cleared ✓')).not.toBeNull();
-    // The separation readout counts up to the corrected value.
-    await screen.findByText('1,000 ft');
+    // The separation readout settles on the corrected value.
+    await screen.findByText('7,000 ft');
     expect(screen.getByText("Restored '23,000 ft'")).not.toBeNull();
     expect(screen.getByText('Readback, FMS and trajectory agree')).not.toBeNull();
 

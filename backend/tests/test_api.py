@@ -85,10 +85,9 @@ def test_safety_window_endpoint():
     window = client.post(
         "/api/safety/window", json={**_triple(), "scenario_id": "altitude-sync"}
     ).json()
-    assert window["conflict_time_s"] == 165.0
-    assert window["last_safe_correction_s"] == 0.0
-    assert window["last_safe_correction_s"] < window["conflict_time_s"]
-    assert len(window["causal_chain"]) == 4
+    assert window["conflict_time_s"] is None
+    assert window["last_safe_correction_s"] is None
+    assert len(window["causal_chain"]) == 1
 
 
 def test_resolutions_endpoints():

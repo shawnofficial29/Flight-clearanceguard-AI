@@ -4,6 +4,7 @@ import type { Clearance, DemoResult } from '../api/types';
 
 /** Scenario running the two-step altitude confirmation flow. */
 export const SYNC_SCENARIO_ID = 'altitude-sync';
+export const CUSTOM_SCENARIO_ID = 'custom';
 
 /** Autoplay dwell per sync step (ms): paced for live narration. */
 export const SYNC_STEP_MS = 8000;

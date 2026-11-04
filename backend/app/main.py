@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agents import atc_intent, coordinator, explanation, pilot_intent
@@ -19,6 +19,7 @@ from .models import (
     CoordinateRequest,
     CoordinationResult,
     CorrectionResult,
+    CustomDemoRequest,
     DemoRequest,
     DemoResult,
     EnumerateRequest,
@@ -36,7 +37,7 @@ from .models import (
     VerifyRequest,
     VoiceTranscript,
 )
-from .scenarios import SCENARIOS, get_scenario
+from .scenarios import CUSTOM_SCENARIO_ID, SCENARIOS, get_scenario, register_custom_scenario
 from .services import audit, comparison, conflict, fingerprints, fms, resolutions, safety, voice
 from .services.conflict import DEFAULT_GEOMETRY
 from .services.voice import VoiceAPIError
@@ -140,6 +141,15 @@ def explain(request: ExplainRequest) -> Explanation:
 @app.post("/api/demo/run", response_model=DemoResult)
 def demo_run(request: DemoRequest) -> DemoResult:
     return run_demo(load_settings(), use_live=request.use_live, scenario_id=request.scenario_id)
+
+
+@app.post("/api/demo/run-custom", response_model=DemoResult)
+def demo_run_custom(request: CustomDemoRequest) -> DemoResult:
+    try:
+        register_custom_scenario(request.atc_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return run_demo(load_settings(), use_live=request.use_live, scenario_id=CUSTOM_SCENARIO_ID)
 
 
 @app.post("/api/demo/correct", response_model=CorrectionResult)

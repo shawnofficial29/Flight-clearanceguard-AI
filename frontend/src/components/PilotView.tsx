@@ -23,7 +23,7 @@ const TABLET_RATE = 1;
 /** Drop-in ATC voice file served from the public folder. */
 const ATC_AUDIO_SRC = '/atc-audio.mp3';
 /** Example ATC instruction the audio carries; shown as its transcript. */
-const ATC_TRANSCRIPT = 'Decrease to 23,000 feet.';
+const ATC_TRANSCRIPT = 'Maintain 23,000 feet and start decreasing after 15 miles.';
 
 type TabletPhase = 'normal' | 'mismatch' | 'waiting' | 'confirmed' | 'verified' | 'alt';
 
@@ -110,6 +110,11 @@ export interface PilotViewProps {
   onConfirmAtc: (choiceFt: number) => void;
   onVerifyPilot: () => void;
   onTimeChange: (t: number) => void;
+  voiceTranscript: string | null;
+  voiceAudioSrc: string | null;
+  voiceError: string | null;
+  onUploadAudio: (file: File) => void;
+  onApplyTranscript: (text: string) => void;
 }
 
 /**
@@ -133,14 +138,20 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
     onConfirmAtc,
     onVerifyPilot,
     onTimeChange,
+    voiceTranscript,
+    voiceAudioSrc,
+    voiceError,
+    onUploadAudio,
+    onApplyTranscript,
   } = props;
   const corrected = correction !== null;
 
-  // The tablet always shows the executed (pre-verification) route: no
-  // before/after comparison, so the aircraft never jumps between profiles.
+  // The tablet flies the verified route once it exists — 23,000 through the
+  // encounter, then the landing descent — and the executed mis-set route
+  // before that. No toggle: verification flips the whole tablet at once.
   const conflictPred: ConflictPrediction | null = correction?.conflict ?? demo?.conflict ?? null;
   const historyPred: ConflictPrediction | null = corrected ? (demo?.conflict ?? null) : null;
-  const beforeProfile = (corrected ? historyPred?.profile : conflictPred?.profile) ?? [];
+  const flownProfile = conflictPred?.profile ?? [];
 
   // Playback runs the same hook as the main map, at real-time cockpit pace.
   const loopProfile = conflictPred?.profile ?? [];
@@ -171,7 +182,7 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
     onTimeChange(playback.timeS);
   }, [playback.timeS, onTimeChange]);
 
-  const sample = beforeProfile.length === 0 ? null : sampleProfile(beforeProfile, playback.timeS);
+  const sample = flownProfile.length === 0 ? null : sampleProfile(flownProfile, playback.timeS);
 
   const [waitBeat, setWaitBeat] = useState(false);
   useEffect(() => {
@@ -216,6 +227,17 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
       void started.catch(() => setAudioMissing(true));
     }
   }, []);
+
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [typedText, setTypedText] = useState('');
+  const handleFileChange = useCallback(() => {
+    const file = fileRef.current?.files?.[0] ?? null;
+    if (fileRef.current !== null) fileRef.current.value = '';
+    if (file !== null) onUploadAudio(file);
+  }, [onUploadAudio]);
+  const handleApplyTyped = useCallback(() => {
+    if (typedText.trim() !== '') onApplyTranscript(typedText);
+  }, [typedText, onApplyTranscript]);
 
   const name = syncAlt?.callsign ?? callsign ?? 'META 452';
   const cleared = syncAlt?.atcClearedFt ?? null;
@@ -416,20 +438,63 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
               <section className="pv-card pv-audio" aria-label="ATC voice">
                 <div className="pv-row">
                   <span className="pv-label">ATC VOICE</span>
-                  <button type="button" className="pv-listen" onClick={handleListen}>
-                    ▶ Listen
-                  </button>
+                  <span className="pv-audiobtns">
+                    <button type="button" className="pv-listen" onClick={handleListen}>
+                      ▶ Listen
+                    </button>
+                    <button
+                      type="button"
+                      className="pv-upload"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      Upload
+                    </button>
+                  </span>
                 </div>
                 <div className="pv-row">
                   <span className="pv-label">TRANSCRIPT</span>
                 </div>
-                <div className="pv-transcript pv-num">{ATC_TRANSCRIPT}</div>
-                {audioMissing ? (
+                <div className="pv-transcript pv-num">{voiceTranscript ?? ATC_TRANSCRIPT}</div>
+                {audioMissing && voiceAudioSrc === null ? (
                   <div className="pv-audiohint">
                     ATC audio file missing — add frontend/public/atc-audio.mp3
                   </div>
                 ) : null}
-                <audio ref={audioRef} src={ATC_AUDIO_SRC} preload="none" aria-hidden="true" />
+                {voiceError !== null ? (
+                  <div className="pv-voiceerr" role="alert">
+                    {voiceError}
+                  </div>
+                ) : null}
+                {voiceError !== null ? (
+                  <div className="pv-typerow">
+                    <input
+                      type="text"
+                      className="pv-typebox"
+                      aria-label="Type what ATC said"
+                      placeholder="Type what ATC said…"
+                      value={typedText}
+                      onChange={(event) => setTypedText(event.target.value)}
+                    />
+                    <button type="button" className="pv-apply" onClick={handleApplyTyped}>
+                      Apply
+                    </button>
+                  </div>
+                ) : null}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="audio/*"
+                  className="pv-fileinput"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onChange={handleFileChange}
+                />
+                <audio
+                  ref={audioRef}
+                  src={voiceAudioSrc ?? ATC_AUDIO_SRC}
+                  preload="none"
+                  aria-hidden="true"
+                />
               </section>
             </div>
             <div className="pv-mapwrap sim-wrap">
@@ -442,6 +507,7 @@ export const PilotView = memo(function PilotView(props: PilotViewProps): React.J
                 atcVia={atcVia}
                 timeS={playback.timeS}
                 fitKey={resetKey}
+                view={corrected ? 'after' : 'before'}
               />
             </div>
           </div>

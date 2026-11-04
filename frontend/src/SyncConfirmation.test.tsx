@@ -14,7 +14,7 @@ const ALTITUDES = {
   callsign: 'META 452',
   atcClearedFt: 23000,
   pilotSetFt: 22000,
-  trafficFt: 22000,
+  trafficFt: 30000,
 };
 
 afterEach(() => {
@@ -120,7 +120,7 @@ describe('SyncPanels', () => {
   it('warns instead of resolving when ATC confirms the traffic altitude', () => {
     renderPanels('alt', { atcChoiceFt: 22000 });
     expect(screen.getByText('ATC confirmed 22,000 ✓')).not.toBeNull();
-    expect(screen.getByText('Traffic at 22,000 ft near MERIT.')).not.toBeNull();
+    expect(screen.getByText('Traffic at 30,000 ft near MERIT.')).not.toBeNull();
     expect(screen.queryByText('Verify')).toBeNull();
     expect(screen.queryByText(/Clearance synchronized/)).toBeNull();
   });
@@ -227,7 +227,7 @@ describe('sync stepper and map tag', () => {
     expect(screen.getByText('everyone agrees')).not.toBeNull();
   });
 
-  it('tags the verified sync map with height above traffic', () => {
+  it('shows no conflict tag on the verified sync map when traffic is well clear', () => {
     const { container } = render(
       <SimMap
         conflict={makeSyncCorrection().conflict}
@@ -242,13 +242,18 @@ describe('sync stepper and map tag', () => {
         onViewChange={() => {}}
       />,
     );
-    expect(screen.getByText('1,000 ft above traffic ✓')).not.toBeNull();
+    expect(screen.getByText('META 452')).not.toBeNull();
+    expect(screen.getByText('Intruder')).not.toBeNull();
+    expect(screen.queryByText(/above traffic/)).toBeNull();
+    expect(screen.queryByText(/Conflict ·/)).toBeNull();
+    expect(container.querySelectorAll('.cf-cleared').length).toBe(0);
+    expect(container.querySelectorAll('.cf-tag').length).toBe(0);
     expect(screen.queryByText(/Conflict cleared/)).toBeNull();
     expect(container.textContent ?? '').not.toMatch(/collision|crash/i);
   });
 
-  it('keeps the before view on the counterfactual descent', () => {
-    render(
+  it('shows no conflict tag on the before view when traffic is well clear', () => {
+    const { container } = render(
       <SimMap
         conflict={makeSyncConflict()}
         history={null}
@@ -262,7 +267,11 @@ describe('sync stepper and map tag', () => {
         onViewChange={() => {}}
       />,
     );
-    expect(screen.getByText('Conflict · 22,000 ft')).not.toBeNull();
+    expect(screen.getByText('META 452')).not.toBeNull();
+    expect(screen.getByText('Intruder')).not.toBeNull();
+    expect(screen.queryByText(/Conflict ·/)).toBeNull();
+    expect(container.querySelectorAll('.cf-cleared').length).toBe(0);
+    expect(container.querySelectorAll('.cf-tag').length).toBe(0);
   });
 
   it('never shows collision or crash language in the sync flow', () => {

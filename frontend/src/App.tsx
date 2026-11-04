@@ -26,7 +26,7 @@ import { SideView } from './components/SideView';
 import { PilotPerspectivePage } from './components/PilotPerspectivePage';
 import type { MapViewMode } from './components/SimMap';
 import { useSyncConfirmation } from './hooks/useSyncConfirmation';
-import { SYNC_SCENARIO_ID, syncAltitudes } from './utils/syncFlow';
+import { CUSTOM_SCENARIO_ID, SYNC_SCENARIO_ID, syncAltitudes } from './utils/syncFlow';
 
 function tripleOf(demo: DemoResult): IntentTriple {
   return { atc: demo.atc, pilot: demo.pilot, fms: demo.fms };
@@ -90,6 +90,12 @@ export function App(): React.JSX.Element {
   const [mapView, setMapView] = useState<MapViewMode>('before');
   // Demo page vs Pilot's Perspective split page.
   const [page, setPage] = useState<'demo' | 'pilot'>('demo');
+  // Active scenario id: the standard arc, or 'custom' after a voice clearance.
+  const [scenarioId, setScenarioId] = useState<string>(SYNC_SCENARIO_ID);
+  // Voice clearance from the pilot tablet: uploaded ATC audio transcription.
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
+  const [voiceAudioSrc, setVoiceAudioSrc] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   // Altitude-sync loop: ATC confirms first, then the pilot verifies. The
   // sync autoplay drives the correction once the demo loads.
@@ -128,6 +134,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void refreshConnection();
   }, [refreshConnection]);
+
+  function clearVoice(): void {
+    setVoiceTranscript(null);
+    setVoiceError(null);
+    setVoiceAudioSrc((prev) => {
+      if (prev !== null) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
 
   function clearDetails(): void {
     setCorrection(null);
@@ -172,6 +187,8 @@ export function App(): React.JSX.Element {
   async function handleRunDemo(): Promise<void> {
     setDemoLoading(true);
     setError(null);
+    setScenarioId(SYNC_SCENARIO_ID);
+    clearVoice();
     clearDetails();
     setDemo(null);
     try {
@@ -187,12 +204,60 @@ export function App(): React.JSX.Element {
     }
   }
 
+  async function handleApplyTranscript(text: string): Promise<void> {
+    const atcText = text.trim();
+    if (atcText === '' || demoLoading) return;
+    setDemoLoading(true);
+    setError(null);
+    setVoiceError(null);
+    clearDetails();
+    try {
+      const next = await api.runCustomAtc(atcText, useLive);
+      setDemo(next);
+      setOffline(false);
+      await loadDetails(next, CUSTOM_SCENARIO_ID);
+      setScenarioId(CUSTOM_SCENARIO_ID);
+      setVoiceTranscript(atcText);
+    } catch (unknown) {
+      if (unknown instanceof ApiError && unknown.status === 0) setOffline(true);
+      setVoiceError(unknown instanceof ApiError ? unknown.message : 'Custom run failed.');
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
+  async function handleUploadAudio(file: File): Promise<void> {
+    setVoiceError(null);
+    setVoiceAudioSrc((prev) => {
+      if (prev !== null) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+    try {
+      const result = await api.transcribeWav(file, useLiveRef.current);
+      if (result.transcript.trim() === '') {
+        setVoiceTranscript(null);
+        setVoiceError(
+          result.note ?? 'Transcription came back empty — type what ATC said instead.',
+        );
+        return;
+      }
+      await handleApplyTranscript(result.transcript);
+    } catch (unknown) {
+      setVoiceTranscript(null);
+      setVoiceError(
+        unknown instanceof ApiError
+          ? `${unknown.message} — type what ATC said instead.`
+          : 'Transcription failed — type what ATC said instead.',
+      );
+    }
+  }
+
   async function handleCorrect(): Promise<void> {
     if (demo === null) return;
     setCorrecting(true);
     setError(null);
     try {
-      const next = await api.runCorrection(useLive, SYNC_SCENARIO_ID);
+      const next = await api.runCorrection(useLive, scenarioId);
       setCorrection(next);
       setAppliedId(selectedId ?? coordination?.recommended_candidate_id ?? null);
       setOffline(false);
@@ -202,7 +267,7 @@ export function App(): React.JSX.Element {
       // state would discard the live recommendation and tool-call trace.
       const triple = correctedTripleOf(demo, next);
       const [nextSafety, nextPrints, nextAudit, nextEvents] = await Promise.all([
-        api.safetyWindow(triple, SYNC_SCENARIO_ID),
+        api.safetyWindow(triple, scenarioId),
         api.fingerprints(triple),
         api.auditVerify(),
         api.auditEvents(),
@@ -225,7 +290,7 @@ export function App(): React.JSX.Element {
     setVerifying(true);
     setError(null);
     try {
-      const result = await api.verifyCandidate(tripleOf(demo), id, SYNC_SCENARIO_ID);
+      const result = await api.verifyCandidate(tripleOf(demo), id, scenarioId);
       setVerification(result);
     } catch (unknown) {
       setVerification(null);
@@ -238,7 +303,9 @@ export function App(): React.JSX.Element {
   async function handleReset(): Promise<void> {
     setError(null);
     setDemo(null);
+    setScenarioId(SYNC_SCENARIO_ID);
     clearDetails();
+    clearVoice();
     try {
       await api.resetSession();
       const [nextAudit, nextEvents] = await Promise.all([api.auditVerify(), api.auditEvents()]);
@@ -282,6 +349,11 @@ export function App(): React.JSX.Element {
           onConfirmAtc={sync.confirmAtc}
           onVerifyPilot={sync.verifyPilot}
           onTimeChange={setMapTimeS}
+          voiceTranscript={voiceTranscript}
+          voiceAudioSrc={voiceAudioSrc}
+          voiceError={voiceError}
+          onUploadAudio={(file) => void handleUploadAudio(file)}
+          onApplyTranscript={(text) => void handleApplyTranscript(text)}
           onBack={() => setPage('demo')}
           onReplay={() => void handleRunDemo()}
         />
