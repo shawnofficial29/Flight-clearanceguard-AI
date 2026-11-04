@@ -1,144 +1,156 @@
 # ClearanceGuard AI
 
-Shared 4D ATC clearance verification prototype. Compares ATC intent, pilot
-readback, simulated FMS programming, and predicted trajectory — and explains
-any mismatch in plain language.
+Catches misheard ATC clearances before they become deviations.
 
-Status: **Safety Window and Verified Resolution complete** (counterfactual
-simulation, verified candidates, coordinator agent, fingerprints, audit
-chain). Frontend follows next.
+> **Demo video:** _link coming — 3-minute walkthrough (demo + pilot's perspective)._
 
-## Architecture
+![Where it lives: the cockpit tablet](frontend/public/cockpit-wide.webp)
 
-```text
-ATC clearance ──► ATC Intent Agent ──┐
-  (typed / WAV)   muse-spark-1.3     │
-                                     ▼
-Pilot readback ─► Pilot Agent ──► FMS simulator ──► Deterministic ──► 4D conflict
-  (Muse Voice /     muse-spark-1.3    (route/level)    comparison      predictor
-   typed fallback)                                     (matrix)       (2 aircraft)
-                                                                              │
-                                                                              ▼
-                                                    Verification Explanation Agent
-                                                        (plain-language warning)
-```
+About 1 in 4 accidents involves pilot-ATC miscommunication (ICAO/FAA) — and
+the deadliest crash in history, Tenerife, started with a misunderstood radio
+call. ClearanceGuard AI listens to every clearance, compares the ATC
+instruction, the pilot readback, and the FMS entry, and the instant they
+disagree it raises the flag and walks the crew to a verified fix.
 
-- AI interprets language and explains. Deterministic Python compares and
-  predicts. Nothing edits or controls the aircraft.
-- State is in-memory only; every result carries a provenance badge: Live Meta
-  API, Live Muse Voice, or Fixture fallback.
-- Clearances use a fixed, non-recursive `ClearanceAction` list (DIRECT_TO,
-  CLIMB, DESCEND, MAINTAIN, SPEED, HEADING, HOLD) with triggers
-  (IMMEDIATE, AFTER_WAYPOINT, AT_WAYPOINT, AT_TIME). Comparison emits
-  categorized findings across nine categories; any required field below
-  0.85 confidence forces VERIFY_REQUIRED.
+## The demo in 60 seconds
 
-## Setup
+ATC clears META 452 to **maintain 23,000 feet** — but the pilot mishears it,
+sets **22,000**, and programs the flight computer. ClearanceGuard:
+
+1. Reads all three sources (clearance, readback, FMS) and raises a
+   **mismatch flag** instantly.
+2. Predicts the flight path forward in 4D against surrounding traffic.
+3. Proposes a correction it has **already verified as safe** (restore 23,000).
+4. ATC confirms, the pilot verifies — **clearance synchronized**, all agree.
+
+Then flip to **Pilot's Perspective**: the same loop running live on a cockpit
+tablet — gray EFB styling, moving map, the aircraft holding 23,000 through
+the encounter. Drop in an ATC voice recording and the tablet transcribes it
+and builds the same safety check at the new altitude automatically.
+
+## Features
+
+- **Mismatch detection** across ATC intent, pilot readback, and simulated FMS
+  (changed values, dropped conditions, nine finding categories).
+- **4D conflict prediction** over both aircraft plus a counterfactual safety
+  window (last safe correction time, causal chain).
+- **Verified resolutions only**: candidates are enumerated, independently
+  verified (comparison agrees, no conflict), then applied on explicit pilot
+  confirmation. Nothing auto-flies the airplane.
+- **Pilot tablet view**: 50/50 split — live interactive tablet on top,
+  cockpit context below.
+- **Voice upload**: ATC audio transcribed into a custom clearance scenario
+  (typed fallback when offline).
+- **Offline-first, Live AI optional**: deterministic local parsing and
+  scripted coordination with zero setup; flip on Live to run parsing,
+  explanation, and coordination through Meta's model API. Every result
+  carries a provenance badge (`Live Meta API` vs `Fixture fallback`).
+- **Auditability**: SHA-256 intent fingerprints plus a hash-linked audit
+  chain — every decision replayable.
+
+<!--
+## Screenshots
+
+Add captures to docs/screenshots/ and uncomment:
+![Demo: mismatch caught](docs/screenshots/demo-mismatch.png)
+![Demo: clearance synchronized](docs/screenshots/demo-synced.png)
+![Pilot tablet with live map](docs/screenshots/pilot-tablet.png)
+-->
+
+## Quickstart
+
+Prereqs: Python 3.12+, Node 18+.
 
 ```powershell
+# Backend (terminal 1)
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r backend\requirements.txt
-copy .env.example .env   # set MODEL_API_KEY for live APIs; optional for fixtures
-```
-
-`.env` stays ignored; only `MODEL_API_KEY` is required — model and voice
-endpoints default to the official Meta URLs.
-
-## Run
-
-```powershell
-.venv\Scripts\Activate.ps1
+copy .env.example .env   # optional: set MODEL_API_KEY for Live mode
 cd backend
 uvicorn app.main:app --port 8000
 ```
 
-Health: `GET http://127.0.0.1:8000/health`
+```powershell
+# Frontend (terminal 2)
+cd frontend
+npm install
+npm run dev
+```
 
-## Demo script (backend)
+Open http://localhost:5173 (API health: http://127.0.0.1:8000/health).
+No key needed — the full demo runs offline on deterministic fixtures.
 
-1. `POST /api/demo/run {"use_live": false}` — one-click deterministic demo.
-   Expect: comparison `mismatch` on Climb condition (`after passing MERIT`
-   omitted), FMS immediate climb, predicted conflict (~T+210s, lateral < 5 NM,
-   vertical < 1000 ft), plain-language explanation.
-2. `POST /api/demo/correct {"use_live": false}` — simulated action
-   "Pilot confirms corrected FMS entry". Expect: matrix `agree`, no conflict,
-   `resolved: true`.
-3. `POST /api/session/reset` — clear in-memory state.
-4. Live mode: set `MODEL_API_KEY` in `.env` and repeat with
-   `{"use_live": true}`.
+For Live mode, set `MODEL_API_KEY` in `.env` (endpoints default to the
+official Meta URLs; see `.env.example`) and toggle **Live** in the demo.
 
-Demo clearance: `META 452, maintain 23,000 feet.` The pilot mishears it as
-22,000 ft and sets that instead.
+## Architecture
 
-One registry scenario (`GET /api/scenarios`, `scenario_id` on demo and
-conflict calls): `altitude-sync` — ATC clears 23,000 ft, the pilot sets
-22,000 ft (changed value, conflict at T+165 s). The run goes
-parse → FMS → compare → predict → correct → resolve: ATC confirms 23,000
-first, then the pilot verifies, ending 1,000 ft above traffic.
+```text
+ATC clearance --\
+                 +--> compare (matrix) --> predict (4D) --> verify --> apply
+Pilot readback -> FMS sim --/                |                 |
+Voice / typed ------------------------------------------------+
+```
 
-Differentiation services (all deterministic except the coordinator's
-explanations): counterfactual Safety Window (`POST /api/safety/window`),
-verified resolution candidates (`POST /api/resolutions/enumerate` and
-`/verify`), SHA-256 intent fingerprints (`POST /api/fingerprints`), a
-hash-linked audit chain (`GET /api/audit/events`, `/verify`), and the
-Resolution Coordinator Agent (`POST /api/coordinate`) using native Chat
-Completions tool calling (6 tools, 6-turn cap, submit-only-verified).
+- AI interprets language and explains; deterministic Python compares and
+  predicts. Nothing edits or controls the aircraft — correction is an
+  explicit simulated pilot action.
+- Clearances use a fixed, non-recursive `ClearanceAction` list (DIRECT_TO,
+  CLIMB, DESCEND, MAINTAIN, SPEED, HEADING, HOLD) with triggers
+  (IMMEDIATE, AFTER_WAYPOINT, AT_WAYPOINT, AT_TIME).
+- State is in-memory only; `POST /api/session/reset` clears it.
+
+Key endpoints: `/api/demo/run`, `/api/demo/run-custom` (voice),
+`/api/demo/correct`, `/api/safety/window`, `/api/resolutions/enumerate`,
+`/api/resolutions/verify`, `/api/fingerprints`, `/api/coordinate`,
+`/api/voice/transcribe`, `/api/scenarios`, `/api/audit/events`.
 
 ## Meta model usage
 
-- `muse-spark-1.3`: ATC Intent Agent, Pilot Understanding Agent, Verification
-  Explanation Agent. Strict JSON schemas (`ClearancePayload`,
-  `ExplanationPayload`) validated with Pydantic; missing values stay null —
-  never inferred. Source text, evidence spans, and confidence are preserved.
+- `muse-spark-1.3`: ATC Intent, Pilot Understanding, Verification
+  Explanation agents. Strict JSON schemas validated with Pydantic; missing
+  values stay null — never inferred.
 - `muse-voice-transcribe-1.0`: prerecorded WAV transcription; typed input
-  remains as fallback. Audio must be mono 16-bit PCM WAV at 16 or 24 kHz.
-  The live request sends a `request` JSON part (model, audioEncoding,
-  mode, keywords) plus the `audio` WAV part.
-- Only `MODEL_API_KEY` is required (`META_API_KEY` still works as a legacy
-  fallback); endpoints default to `https://api.meta.ai/v1/...` with
-  `.env`/environment overrides (see `.env.example`). Requests have a 20 s
-  default timeout with clear errors; any failure degrades to labelled
-  fixtures.
-
-## Safety limitations
-
-Prototype for demonstration only: flat-plane demo geography, constant speeds,
-simplified FMS and separation minima. Not for operational use. The AI never
-commands the aircraft; correction is an explicit simulated pilot action.
+  remains as fallback.
+- Only `MODEL_API_KEY` is required (`META_API_KEY` still works as legacy).
+  Any live failure degrades to labelled fixtures, never silent guesses.
 
 ## Tests
 
 ```powershell
-.venv\Scripts\Activate.ps1
-cd backend
-python -m pytest tests -q
+# Backend (101 tests, offline)
+.venv\Scripts\python -m pytest backend\tests -q
+
+# Frontend (197 tests + typecheck)
+cd frontend
+npm test
+npm run typecheck
 ```
 
-Covers parsing fallback, strict validation, FMS behavior, comparison, conflict
-prediction, voice fallback, demo end to end, and HTTP routes. All tests run
-offline with fixed fixtures and stubbed transports.
-
-Live smoke tests (need `MODEL_API_KEY` in `.env`; fail loudly on any
-fixture fallback instead of passing silently):
+Live smoke checks (need `MODEL_API_KEY`; fail loudly on fixture fallback):
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python backend\scripts\live_smoke.py
 .\.venv\Scripts\python backend\scripts\voice_smoke.py <path-to-24khz-mono-wav>
 .\.venv\Scripts\python backend\scripts\coordinator_smoke.py
 ```
 
-Offline evaluation (30 fixed pairs plus 3 scenarios; reproducible):
+## Safety limitations
 
-```powershell
-.\.venv\Scripts\python backend\scripts\run_eval.py
+Prototype for demonstration only: flat-plane demo geography, simplified FMS
+and separation minima. Not for operational use. The AI never commands the
+aircraft; a real deployment would be certified avionics-adjacent software
+(DO-178C processes), fully deterministic offline, wired into the FMS and
+radios.
+
+## Layout
+
+```text
+backend/    FastAPI API + agents, FMS sim, prediction, safety, audit
+frontend/   React + Vite demo UI, pilot tablet, maps, charts (Vitest suite)
+docs/       Handoff document
+scripts/    Doc generators
 ```
 
-## Public-deployment preparation
-
-- No credentials in the repo (`.env.example` only; `.env` ignored).
-- CORS restricted to local frontend origins; tighten for hosting.
-- Serve the API behind TLS, set real Meta endpoints via environment, and keep
-  fixture mode as the outage fallback.
-- No external copyrighted assets; map/chart UI is hand-drawn SVG (Day 2).
+See LICENSE.

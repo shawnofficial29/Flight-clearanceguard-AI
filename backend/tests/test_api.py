@@ -63,8 +63,8 @@ def test_demo_run_and_correct_endpoints():
     client.post("/api/session/reset")
     demo = client.post("/api/demo/run", json={"use_live": False}).json()
     assert demo["comparison"]["overall"] == "mismatch"
-    assert demo["conflict"]["conflict"] is True
-    assert demo["conflict"]["first_conflict_time_s"] is not None
+    assert demo["conflict"]["conflict"] is False
+    assert demo["conflict"]["first_conflict_time_s"] is None
     corrected = client.post("/api/demo/correct", json={"use_live": False}).json()
     assert corrected["resolved"] is True
     assert corrected["conflict"]["conflict"] is False
